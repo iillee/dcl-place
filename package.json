@@ -1,0 +1,27 @@
+{
+  "name": "dcl-place",
+  "version": "1.0.0",
+  "description": "The eternal collaborative pixel canvas of Decentraland.",
+  "scripts": {
+    "start": "sdk-commands start",
+    "deploy": "sdk-commands deploy",
+    "build": "sdk-commands build",
+    "server-logs": "sdk-commands sdk-server-logs",
+    "upgrade-sdk": "npm install --save-dev @dcl/sdk@auth-server",
+    "upgrade-sdk:next": "npm install --save-dev @dcl/sdk@next"
+  },
+  "devDependencies": {
+    "@dcl/js-runtime": "7.27.1-33086747846.commit-824d240",
+    "@dcl/sdk": "auth-server"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=6.0.0"
+  },
+  "prettier": {
+    "semi": false,
+    "singleQuote": true,
+    "printWidth": 120,
+    "trailingComma": "none"
+  }
+}
