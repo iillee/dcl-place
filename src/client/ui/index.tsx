@@ -1,38 +1,36 @@
 /**
  * index.tsx — UI entry point.
  *
- * Composes distinct HUD layers into a single full-screen root and registers
- * the React-ECS renderer. Import setupUi from 'src/client/ui'.
+ * Registers every HUD layer through @stom66/dcl-ui-component-kit (DUCK).
+ * Zone order in the `layers` array is z-order (later = drawn above).
+ *
+ * Import setupUi from 'src/client/ui'.
  */
 
-import ReactEcs, { ReactEcsRenderer, ScreenInsetArea, UiEntity } from '@dcl/sdk/react-ecs'
+import { SetupUiComponentKit } from '@stom66/dcl-ui-component-kit'
 
-import { BrushSizeLayer } from 'src/client/ui/layers/layer.brushSize'
-import { LeaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
-import { SnapshotLayer } from 'src/client/ui/layers/layer.snapshot'
-import { ServerStatsLayer } from 'src/client/ui/layers/layer.serverStats'
-import { VersionLayer } from 'src/client/ui/layers/layer.version'
-import { BASE_HEIGHT, BASE_WIDTH } from 'src/client/ui/utils/sizing'
+import { colorPickerLayer } from 'src/client/ui/layers/layer.colorPicker'
+import { cooldownLayer }    from 'src/client/ui/layers/layer.cooldown'
+import { helpPanelLayer }   from 'src/client/ui/layers/layer.helpPanel'
+import { topBarLayer }      from 'src/client/ui/layers/layer.topBar'
+import { topDownPanLayer }  from 'src/client/ui/layers/layer.topDownPan'
+import { versionLayer }     from 'src/client/ui/layers/layer.version'
 
 
 // MARK: setupUi
-/**
- * Register the main HUD renderer at the virtual 1920×1080 reference size.
- */
 export function setupUi() {
-	ReactEcsRenderer.setUiRenderer(
-		() => (
-			<ScreenInsetArea>
-				<LeaderboardLayer />
-				<ServerStatsLayer />
-				<BrushSizeLayer />
-				<SnapshotLayer />
-				<VersionLayer />
-			</ScreenInsetArea>
-		),
-		{
-			virtualHeight: BASE_HEIGHT,
-			virtualWidth : BASE_WIDTH,
-		}
-	)
+	SetupUiComponentKit({
+		layers: [
+			// Order = z-order (later draws on top).
+			versionLayer,
+			// Spectator pan controls sit below chrome so its full-screen
+			// drag catcher doesn't swallow taps meant for the top bar
+			// or bottom picker.
+			topDownPanLayer,
+			topBarLayer,
+			helpPanelLayer,
+			colorPickerLayer,
+			cooldownLayer,
+		],
+	})
 }

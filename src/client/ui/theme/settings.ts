@@ -7,9 +7,6 @@
 
 import { Color4 } from '@dcl/sdk/math'
 
-import { TEAM_COLORS } from 'src/shared/palette'
-import { Team } from 'src/shared/team'
-
 import { alpha } from 'src/client/ui/utils/colors'
 
 
@@ -28,10 +25,6 @@ export const UI_THEME = {
 		warning:   Color4.Yellow(),
 		success:   Color4.create(0.25, 0.78, 0.40, 1),
 		danger:    Color4.create(0.90, 0.25, 0.30, 1),
-
-		/** Team brand colors (shared palette). */
-		teamRed:   TEAM_COLORS[Team.Red],
-		teamBlue:  TEAM_COLORS[Team.Blue],
 
 		/** Panel / overlay surfaces (alpha applied via utils/colors). */
 		countdownBg: alpha(PANEL_BASE, 0.92),
