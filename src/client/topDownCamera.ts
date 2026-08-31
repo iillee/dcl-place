@@ -1,100 +1,186 @@
-// Top-down camera — a fixed VirtualCamera high above the scene looking
-// down at the center. Activated by writing its entity id into
-// MainCamera.virtualCameraEntity; released by writing `undefined`, which
-// snaps the game back to the normal player-follow camera.
-//
-// IMPORTANT design tradeoff:
-//   A perfectly straight-down camera has an undefined projected "forward"
-//   on the ground plane, so DCL's camera-relative WASD input axis falls
-//   back to a fixed world axis. Rotating what's rendered (via yaw) then
-//   decouples from the movement axis and controls feel inverted or
-//   sideways.
-//
-//   The fix is to give the camera a SMALL horizontal offset from its
-//   look target so lookAtEntity produces a real forward vector. We keep
-//   the offset intentionally small (a few meters at ~50 m altitude ≈
-//   nearly-vertical tilt) so the view still reads as pure top-down but
-//   the SDK has enough information to align WASD with the view.
-//
-// The offset direction also picks which world axis is "up" on screen:
-//   • +Z offset (south of target) → camera looks north, world +Z at screen top
-//   • +X offset (east of target)  → camera looks west, world +X at screen top
-//     (this rotates the scene 90° vs a south-offset view)
+/**
+ * topDownCamera.ts — spectator-style overhead camera with follow + pan.
+ *
+ * Ported from dcl-snowdrift; adapted for dcl/place (no brush hotkeys,
+ * uses PAINT-flavored scene constants). See original for detailed
+ * design notes.
+ *
+ * Two modes:
+ *   FOLLOW  — lookTarget lerps toward the player each frame (default).
+ *   FREE    — lookTarget is driven by pan input (mouse drag on desktop,
+ *             d-pad hold on mobile). Follow re-engages on recenter().
+ *
+ * Public API used by the UI layers:
+ *   setupTopDownCamera / toggleTopDownCamera / isTopDownActive /
+ *   applyPanDelta / beginDrag / endDrag / isDragging /
+ *   beginPan / endPan / getDpadSpeed /
+ *   zoomIn / zoomOut / canZoomIn / canZoomOut / recenter
+ */
 
-import { engine, Transform, VirtualCamera, MainCamera, Entity, InputAction, PointerEventType, inputSystem } from '@dcl/sdk/ecs'
+import { engine, Entity, InputAction, MainCamera, PointerEventType, Transform, VirtualCamera, inputSystem } from '@dcl/sdk/ecs'
 import { Vector3 } from '@dcl/sdk/math'
+import { isMobile } from '@dcl/sdk/platform'
 
-import { cycleBrushDown, cycleBrushUp } from 'src/client/brush'
-import {
-	SCENE_WORLD_SIZE_X_METERS,
-	SCENE_WORLD_SIZE_Z_METERS,
-} from 'src/shared/settings'
+import { playUiClick } from 'src/client/audio'
+import { SCENE_WORLD_SIZE_X_METERS, SCENE_WORLD_SIZE_Z_METERS } from 'src/shared/settings'
 
-// Scene center (X, Z) at ground level — the camera's look target.
+
+// MARK: Tuning
 const CENTER_X = SCENE_WORLD_SIZE_X_METERS / 2
 const CENTER_Z = SCENE_WORLD_SIZE_Z_METERS / 2
 
-// Camera altitude. Kept inside DCL mobile's ~100 m fog band.
-const CAM_ALTITUDE = 50
+// dcl/place is 160m × 160m — 5× bigger than snowdrift, so default altitudes
+// are higher to keep the whole canvas readable on first entry.
+const CAM_ALTITUDE_DESKTOP_DEFAULT = 90
+const CAM_ALTITUDE_MOBILE_DEFAULT  = 70
+const CAM_ALTITUDE_DEFAULT         = isMobile() ? CAM_ALTITUDE_MOBILE_DEFAULT : CAM_ALTITUDE_DESKTOP_DEFAULT
+const CAM_ALTITUDE_MIN             = 20
+const CAM_ALTITUDE_MAX             = 140
+const CAM_ALTITUDE_STEP            = 10
 
-// East offset (world +X) from the look target. Nonzero so lookAtEntity
-// yields a real projected forward for WASD alignment; kept minimal so
-// the view is visually indistinguishable from straight-down.
-// 3 m at altitude 50 m ≈ 3.4° tilt — the camera reads as pure overhead
-// but the SDK still has enough directional information to align WASD.
 const CAM_EAST_OFFSET = 3
-
-// Smooth transition speed (m/s) for entering / exiting the top-down view.
 const TRANSITION_SPEED = 200
+const FOLLOW_RATE = 5.0
+const FOLLOW_SNAP_EPSILON = 0.05
+const PAN_BOUNDS_MARGIN_BASE = 4
 
-let camEntity:  Entity | null = null
-let lookTarget: Entity | null = null
-let active = false
+const DPAD_PAN_SPEED_BASE = 22
+const DRAG_START_THRESHOLD_PX = 3
+const DRAG_M_PER_PX_BASE = 0.025
+
+
+// MARK: Module state
+let camEntity:      Entity | null = null
+let lookTargetEnt:  Entity | null = null
+let active                        = false
+let currentAltitude               = CAM_ALTITUDE_DEFAULT
+
+const enum Mode { FOLLOW, FREE }
+let mode: Mode = Mode.FOLLOW
+
+const targetPos = { x: CENTER_X, z: CENTER_Z }
+const panVel    = { x: 0,        z: 0 }
+
+let dragActive  = false
+let dragPanning = false
+let dragAccumPx = 0
 
 
 // MARK: setupTopDownCamera
-/** Create the VirtualCamera + look-target entities. Call once at boot. */
 export function setupTopDownCamera(): void {
 	if (camEntity !== null) return
 
-	lookTarget = engine.addEntity()
-	Transform.create(lookTarget, {
-		position: Vector3.create(CENTER_X, 0, CENTER_Z),
+	lookTargetEnt = engine.addEntity()
+	Transform.create(lookTargetEnt, {
+		position: Vector3.create(targetPos.x, 0, targetPos.z),
 	})
 
 	camEntity = engine.addEntity()
 	Transform.create(camEntity, {
-		position: Vector3.create(CENTER_X + CAM_EAST_OFFSET, CAM_ALTITUDE, CENTER_Z),
+		position: Vector3.create(targetPos.x + CAM_EAST_OFFSET, currentAltitude, targetPos.z),
 	})
 	VirtualCamera.create(camEntity, {
-		lookAtEntity: lookTarget,
+		lookAtEntity:      lookTargetEnt,
 		defaultTransition: { transitionMode: VirtualCamera.Transition.Speed(TRANSITION_SPEED) },
 	})
 
-	// Hotkeys:
-	//   E (IA_PRIMARY)      = brush size UP   (wraps 11 -> 1)
-	//   F (IA_SECONDARY)    = brush size DOWN (clamps at 1)
-	//   1 (IA_ACTION_3)     = toggle spectator / top-down view
-	// IA_ACTION_3..6 map to the action-bar slots 1..4 in DCL's default map.
-	engine.addSystem(() => {
-		if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
-			cycleBrushUp()
-		}
-		if (inputSystem.isTriggered(InputAction.IA_SECONDARY, PointerEventType.PET_DOWN)) {
-			cycleBrushDown()
-		}
+	// Hotkey: 1 (IA_ACTION_3) toggles spectator.
+	engine.addSystem((dt: number) => {
 		if (inputSystem.isTriggered(InputAction.IA_ACTION_3, PointerEventType.PET_DOWN)) {
+			playUiClick()
 			toggleTopDownCamera()
 		}
+		// Safety net: pointer release ends any active drag even if the
+		// UI catcher missed it (cursor left window etc.).
+		if (inputSystem.isTriggered(InputAction.IA_POINTER, PointerEventType.PET_UP)) {
+			dragActive  = false
+			dragPanning = false
+			dragAccumPx = 0
+		}
+		if (active) updateCamera(dt)
 	})
 }
 
 
+// MARK: updateCamera
+function updateCamera(dt: number): void {
+	if (mode === Mode.FOLLOW) {
+		const p = Transform.getOrNull(engine.PlayerEntity)?.position
+		if (p) {
+			const t = 1 - Math.exp(-FOLLOW_RATE * dt)
+			const dx = p.x - targetPos.x
+			const dz = p.z - targetPos.z
+			if (Math.abs(dx) < FOLLOW_SNAP_EPSILON && Math.abs(dz) < FOLLOW_SNAP_EPSILON) {
+				targetPos.x = p.x
+				targetPos.z = p.z
+			} else {
+				targetPos.x += dx * t
+				targetPos.z += dz * t
+			}
+		}
+	} else {
+		// Any player movement input re-engages follow.
+		if (
+			inputSystem.isPressed(InputAction.IA_FORWARD)  ||
+			inputSystem.isPressed(InputAction.IA_BACKWARD) ||
+			inputSystem.isPressed(InputAction.IA_LEFT)     ||
+			inputSystem.isPressed(InputAction.IA_RIGHT)
+		) {
+			recenter()
+		} else {
+			targetPos.x += panVel.x * dt
+			targetPos.z += panVel.z * dt
+		}
+	}
+
+	clampToBounds()
+
+	if (lookTargetEnt !== null) {
+		const t = Transform.getMutable(lookTargetEnt)
+		t.position.x = targetPos.x
+		t.position.z = targetPos.z
+	}
+	if (camEntity !== null) {
+		const t = Transform.getMutable(camEntity)
+		t.position.x = targetPos.x + CAM_EAST_OFFSET
+		t.position.y = currentAltitude
+		t.position.z = targetPos.z
+	}
+}
+
+
+// MARK: clampToBounds
+function clampToBounds(): void {
+	// Margin scales with altitude so at high zoom edge cells can still
+	// be centered on screen. Baseline calibrated at 30 m altitude.
+	const margin = PAN_BOUNDS_MARGIN_BASE * (currentAltitude / 30)
+	const minX = -margin
+	const maxX = SCENE_WORLD_SIZE_X_METERS + margin
+	const minZ = -margin
+	const maxZ = SCENE_WORLD_SIZE_Z_METERS + margin
+	if (targetPos.x < minX) targetPos.x = minX
+	if (targetPos.x > maxX) targetPos.x = maxX
+	if (targetPos.z < minZ) targetPos.z = minZ
+	if (targetPos.z > maxZ) targetPos.z = maxZ
+}
+
+
 // MARK: toggleTopDownCamera
-/** Flip between top-down and normal player camera. */
 export function toggleTopDownCamera(): void {
 	if (camEntity === null) return
 	active = !active
+
+	if (active) {
+		const p = Transform.getOrNull(engine.PlayerEntity)?.position
+		if (p) {
+			targetPos.x = p.x
+			targetPos.z = p.z
+		}
+		mode = Mode.FOLLOW
+		panVel.x = 0
+		panVel.z = 0
+	}
+
 	const main = MainCamera.getMutableOrNull(engine.CameraEntity)
 		?? MainCamera.create(engine.CameraEntity)
 	main.virtualCameraEntity = active ? camEntity : undefined
@@ -104,4 +190,104 @@ export function toggleTopDownCamera(): void {
 // MARK: isTopDownActive
 export function isTopDownActive(): boolean {
 	return active
+}
+
+
+// MARK: recenter
+export function recenter(): void {
+	mode     = Mode.FOLLOW
+	panVel.x = 0
+	panVel.z = 0
+}
+
+
+// MARK: applyPanDelta
+export function applyPanDelta(dxPx: number, dyPx: number): void {
+	if (!active) return
+	if (!dragActive) return
+
+	dragAccumPx += Math.abs(dxPx) + Math.abs(dyPx)
+	if (!dragPanning) {
+		if (dragAccumPx < DRAG_START_THRESHOLD_PX) return
+		dragPanning = true
+	}
+
+	mode = Mode.FREE
+
+	const mPerPx = DRAG_M_PER_PX_BASE * (currentAltitude / 30)
+	targetPos.x +=  dyPx * mPerPx
+	targetPos.z += -dxPx * mPerPx
+}
+
+
+// MARK: beginDrag
+export function beginDrag(): void {
+	if (!active) return
+	dragActive  = true
+	dragPanning = false
+	dragAccumPx = 0
+}
+
+
+// MARK: endDrag
+export function endDrag(): void {
+	dragActive  = false
+	dragPanning = false
+	dragAccumPx = 0
+}
+
+
+// MARK: isDragging
+export function isDragging(): boolean {
+	return dragPanning
+}
+
+
+// MARK: beginPan
+export function beginPan(vx: number, vz: number): void {
+	if (!active) return
+	mode     = Mode.FREE
+	panVel.x = vx
+	panVel.z = vz
+}
+
+
+// MARK: endPan
+export function endPan(): void {
+	panVel.x = 0
+	panVel.z = 0
+}
+
+
+// MARK: getDpadSpeed
+export function getDpadSpeed(): number {
+	return DPAD_PAN_SPEED_BASE * (currentAltitude / 30)
+}
+
+
+// MARK: zoomIn
+export function zoomIn(): void {
+	if (!active) return
+	const next = currentAltitude - CAM_ALTITUDE_STEP
+	currentAltitude = next < CAM_ALTITUDE_MIN ? CAM_ALTITUDE_MIN : next
+}
+
+
+// MARK: zoomOut
+export function zoomOut(): void {
+	if (!active) return
+	const next = currentAltitude + CAM_ALTITUDE_STEP
+	currentAltitude = next > CAM_ALTITUDE_MAX ? CAM_ALTITUDE_MAX : next
+}
+
+
+// MARK: canZoomIn
+export function canZoomIn(): boolean {
+	return active && currentAltitude > CAM_ALTITUDE_MIN
+}
+
+
+// MARK: canZoomOut
+export function canZoomOut(): boolean {
+	return active && currentAltitude < CAM_ALTITUDE_MAX
 }
