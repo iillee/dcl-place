@@ -230,18 +230,20 @@ Server → Client:
 
 ## 8. 10-day build plan
 
-| Day | Milestone |
-|---|---|
-| 1 | ✅ Scaffold on `@dcl/sdk@auth-server`, port canvas systems, expand palette to 16, new server `placePixel` + cooldown, project builds clean |
-| 2 | Client tap-to-place → `placePixel`, one hardcoded color, verify end-to-end paint through server |
-| 3 | Color picker UI (mobile), cooldown ring UI, paint button |
-| 4 | Port spectator cam / help / music from snowdrift, touch-control polish |
-| 5 | Leaderboard (top 100 all-time) + Storage persistence for leaderboard |
-| 6 | Snapshot pipeline: JPG export → in-world board + web endpoint |
-| 7 | First mobile playtest, tune cooldown/palette |
-| 8 | Canvas persistence (chunked Storage) — makes the canvas truly eternal |
-| 9 | Deploy to World, playtest, polish |
-| 10 | README, DoraHacks submission, demo video |
+| Day | Milestone | Status |
+|---|---|---|
+| 1 | Scaffold on `@dcl/sdk@auth-server`, port canvas systems, expand palette to 16, new server `placePixel` + cooldown, project builds clean | ✅ done (`46f5e73`) |
+| 2 | Client tap-to-place → `placePixel`, cursor-driven raycast + cell highlight, end-to-end paint through server | ✅ done (`85cc037`) |
+| 3 | Color picker UI (mobile), cooldown ring UI, paint button | ⏭️ next |
+| 4 | Port spectator cam / help / music from snowdrift, touch-control polish | ⏳ |
+| 5 | Leaderboard (top 100 all-time) + Storage persistence for leaderboard | ⏳ |
+| 6 | Snapshot pipeline: JPG export → in-world board + web endpoint | ⏳ |
+| 7 | First mobile playtest, tune cooldown/palette | ⏳ |
+| 8 | Canvas persistence (chunked Storage) — makes the canvas truly eternal | ⏳ |
+| 9 | Deploy to World, playtest, polish | ⏳ |
+| 10 | README, DoraHacks submission, demo video | ⏳ |
+
+> Sub-day handoff notes live in [`HANDOFF.md`](./HANDOFF.md). Start there for a new session.
 
 ---
 

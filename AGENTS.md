@@ -1,6 +1,17 @@
 # Agent Instructions
 
-This is a Decentraland SDK7 scene project.
+This is **dcl/place** — the eternal collaborative pixel canvas of Decentraland,
+built for the Friendzone Mobile Buildathon (submission deadline Sep 7, 2026).
+
+## 🚨 Read these BEFORE doing anything else
+
+1. **[`docs/HANDOFF.md`](./docs/HANDOFF.md)** — current status, what works, what's next
+2. **[`docs/DESIGN.md`](./docs/DESIGN.md)** — full concept, architecture, 10-day plan
+
+The project uses `@dcl/sdk@auth-server` (Multiplayer Server enabled). Server
+and client run from the same codebase, branched via the **async** `isServer()`
+from `~system/EngineApi` in `src/index.ts`. Do NOT use the sync `isServer()`
+from `@dcl/sdk/network` at the entry point.
 
 ## Before writing any code
 
