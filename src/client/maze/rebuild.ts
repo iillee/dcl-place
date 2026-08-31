@@ -19,8 +19,11 @@
 import {
   engine, Transform, GltfContainer, ColliderLayer,
   Tween, EasingFunction, AudioSource, Entity, MeshRenderer, Material,
+  pointerEventsSystem, InputAction,
 } from '@dcl/sdk/ecs'
 import { Vector3, Quaternion } from '@dcl/sdk/math'
+
+import { onTileTapped } from 'src/client/placeInput'
 
 import { SeedHolder, seedHolder } from 'src/shared/components'
 import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
@@ -150,8 +153,15 @@ function spawnTileWithGrow(p: Placed): void {
   })
   GltfContainer.create(e, {
     src: TILES[p.type].model,
-    visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS,
+    visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS | ColliderLayer.CL_POINTER,
   })
+  // dcl/place: any tap on this tile becomes a paint request. The callback
+  // receives the world-space hit position via inputSystem in the handler.
+  // No hoverText — the highlight is drawn cell-sized by placeInput.
+  pointerEventsSystem.onPointerDown(
+    { entity: e, opts: { button: InputAction.IA_POINTER, hoverText: '', maxDistance: 64, showFeedback: false } },
+    () => { onTileTapped(e) },
+  )
   Tween.create(e, {
     mode: Tween.Mode.Scale({
       start: Vector3.create(0.001, 0.001, 0.001),
