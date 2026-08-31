@@ -18,6 +18,8 @@ import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
 import { playUiClick } from 'src/client/audio'
 import { UI_THEME } from 'src/client/ui/theme/settings'
 import { VERSION }  from 'src/shared/data/version'
+// Cycle-safe: only accessed inside toggleHelpPanel(), never at module load.
+import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 
 
 const { colors, borderRadius, spacing, fontSizes } = UI_THEME
@@ -25,7 +27,7 @@ const WHITE = Color4.White()
 
 // Layout — sit just below the top button row.
 const BAR_TOP_DT       = 32
-const BAR_TOP_MB       = 4
+const BAR_TOP_MB       = 28
 const BTN_SIZE         = 72
 const GAP_BELOW_BAR_PX = 16
 
@@ -110,7 +112,7 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12 } }}
 					uiText = {{
-						value    : '<b><color=#ffcc4d>3.</color></b>  Tap PAINT — every <b><color=#ffcc4d>10s</color></b>. Nothing resets.',
+						value    : '<b><color=#ffcc4d>3.</color></b>  Tap PAINT — every <b><color=#ffcc4d>1s</color></b>. Nothing resets.',
 						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-left',
@@ -158,7 +160,12 @@ export function isHelpPanelVisible(): boolean {
 }
 
 export function toggleHelpPanel(): void {
+	const wasHidden = helpPanelLayer.visibility.isHidden
 	helpPanelLayer.toggle()
+	if (wasHidden && !leaderboardLayer.visibility.isHidden) {
+		// Mutually exclusive with the leaderboard panel — same slot.
+		leaderboardLayer.hide()
+	}
 }
 
 

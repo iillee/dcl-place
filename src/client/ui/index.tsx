@@ -10,8 +10,9 @@
 import { SetupUiComponentKit } from '@stom66/dcl-ui-component-kit'
 
 import { colorPickerLayer } from 'src/client/ui/layers/layer.colorPicker'
-import { cooldownLayer }    from 'src/client/ui/layers/layer.cooldown'
+// layer.cooldown — rolled into colorPickerLayer as an inline paint button.
 import { helpPanelLayer }   from 'src/client/ui/layers/layer.helpPanel'
+import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 import { topBarLayer }      from 'src/client/ui/layers/layer.topBar'
 import { topDownPanLayer }  from 'src/client/ui/layers/layer.topDownPan'
 import { versionLayer }     from 'src/client/ui/layers/layer.version'
@@ -29,8 +30,8 @@ export function setupUi() {
 			topDownPanLayer,
 			topBarLayer,
 			helpPanelLayer,
+			leaderboardLayer,
 			colorPickerLayer,
-			cooldownLayer,
 		],
 	})
 }

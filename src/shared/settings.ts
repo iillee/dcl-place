@@ -62,7 +62,7 @@ export const SCENE_WORLD_SIZE_Z_METERS = 320
 // MARK: dcl/place
 
 /** Milliseconds a player must wait between placing pixels (r/place cooldown). */
-export const PAINT_COOLDOWN_MS = 3_000
+export const PAINT_COOLDOWN_MS = 1_000
 
 /** Max cells a single client is allowed to send in one paintTick. r/place is 1 pixel per tick. */
 export const PAINT_TICK_MAX_CELLS = 1

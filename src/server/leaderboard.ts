@@ -20,6 +20,23 @@ const STORAGE_KEY = 'leaderboard-v1'
 const TOP_N       = 20
 
 let leaderboardEntity: Entity | null = null
+let leaderboardDirty = false
+
+
+// MARK: dirty flag
+
+/** Mark for republish. Server owner ticks a throttled publish on this. */
+export function markLeaderboardDirty(): void {
+	leaderboardDirty = true
+}
+
+export function isLeaderboardDirty(): boolean {
+	return leaderboardDirty
+}
+
+export function clearLeaderboardDirty(): void {
+	leaderboardDirty = false
+}
 
 
 // MARK: ensureLeaderboardEntity
@@ -102,6 +119,7 @@ export function incrementPaint(userId: string, count: number): void {
 			cellsPainted: count,
 		})
 	}
+	leaderboardDirty = true
 }
 
 
@@ -113,10 +131,12 @@ export function updateName(userId: string, name: string): void {
 	const trimmed = name.slice(0, 32)
 	const e       = entries.get(key)
 	if (e) {
+		if (e.name === trimmed) return
 		e.name = trimmed
 	} else {
 		entries.set(key, { userId: key, name: trimmed, cellsPainted: 0 })
 	}
+	leaderboardDirty = true
 }
 
 

@@ -26,6 +26,10 @@ import {
 	isHelpPanelVisible,
 	toggleHelpPanel,
 } from 'src/client/ui/layers/layer.helpPanel'
+import {
+	isLeaderboardVisible,
+	toggleLeaderboard,
+} from 'src/client/ui/layers/layer.leaderboard'
 import { UI_THEME } from 'src/client/ui/theme/settings'
 
 
@@ -34,7 +38,7 @@ const { colors, borderRadius } = UI_THEME
 const BTN_SIZE     = 72
 const BTN_GAP      = 8
 const BAR_TOP_DT   = 32
-const BAR_TOP_MB   = 4
+const BAR_TOP_MB   = 28
 const PANEL_BG     = colors.statsBg
 
 // Muted gold — accent for "on / active" states across all three buttons.
@@ -59,6 +63,8 @@ function PanelButton(props: {
 				justifyContent: 'center',
 				alignItems    : 'center',
 				borderRadius  : borderRadius.md,
+				borderWidth   : 2,
+				borderColor   : WHITE,
 			}}
 			uiBackground = {{ color: PANEL_BG }}
 			onMouseDown  = {props.onPress}
@@ -94,7 +100,11 @@ function EyeIcon(props: { color: Color4 }) {
 function QuestionGlyph(props: { color: Color4 }) {
 	return (
 		<UiEntity
-			uiTransform = {{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center' }}
+			uiTransform = {{
+				width: 40, height: 40,
+				justifyContent: 'center', alignItems: 'center',
+				margin: { bottom: 6 },
+			}}
 			uiText = {{
 				value    : '?',
 				fontSize : 36,
@@ -123,11 +133,32 @@ function MuteIcon(props: { muted: boolean }) {
 }
 
 
+// MARK: TrophyGlyph — ★ for the leaderboard button.
+function TrophyGlyph(props: { color: Color4 }) {
+	return (
+		<UiEntity
+			uiTransform = {{
+				width: 40, height: 40,
+				justifyContent: 'center', alignItems: 'center',
+				margin: { bottom: 6 },
+			}}
+			uiText = {{
+				value    : '★',
+				fontSize : 32,
+				color    : props.color,
+				textAlign: 'middle-center',
+			}}
+		/>
+	)
+}
+
+
 // MARK: TopBarLayer
 type TopBarProps = {
 	specActive  : boolean
 	musicMuted  : boolean
 	helpOpen    : boolean
+	lbOpen      : boolean
 }
 
 class TopBarLayer extends Layer {
@@ -145,6 +176,7 @@ class TopBarLayer extends Layer {
 			specActive: isTopDownActive(),
 			musicMuted: isMusicMuted(),
 			helpOpen  : isHelpPanelVisible(),
+			lbOpen    : isLeaderboardVisible(),
 		})
 
 		// Poll shared state each frame so button visuals stay in sync
@@ -155,10 +187,12 @@ class TopBarLayer extends Layer {
 			const spec  = isTopDownActive()
 			const mute  = isMusicMuted()
 			const help  = isHelpPanelVisible()
+			const lb    = isLeaderboardVisible()
 			const cur   = this.props.get.bind(this.props)
 			if (spec !== cur('specActive')) this.props.set('specActive', spec)
 			if (mute !== cur('musicMuted')) this.props.set('musicMuted', mute)
 			if (help !== cur('helpOpen'))   this.props.set('helpOpen',   help)
+			if (lb   !== cur('lbOpen'))     this.props.set('lbOpen',     lb)
 		})
 	}
 
@@ -166,6 +200,7 @@ class TopBarLayer extends Layer {
 		const specActive = (this.props?.get('specActive') as boolean) ?? false
 		const musicMuted = (this.props?.get('musicMuted') as boolean) ?? false
 		const helpOpen   = (this.props?.get('helpOpen')   as boolean) ?? false
+		const lbOpen     = (this.props?.get('lbOpen')     as boolean) ?? false
 
 		return (
 			<UiEntity
@@ -188,6 +223,13 @@ class TopBarLayer extends Layer {
 					onPress = {() => { playUiClick(); toggleMusic() }}
 				>
 					<MuteIcon muted={musicMuted} />
+				</PanelButton>
+
+				<PanelButton
+					keyId   = "ui_TopBar_lb"
+					onPress = {() => { playUiClick(); toggleLeaderboard() }}
+				>
+					<TrophyGlyph color={lbOpen ? GOLD : WHITE} />
 				</PanelButton>
 
 				<PanelButton

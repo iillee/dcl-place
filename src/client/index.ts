@@ -35,13 +35,14 @@ import { initClientHandler } from 'src/client/clientHandler'
 import { CELL, STEP, lookupTile } from 'src/shared/maze/generator'
 import { initMazeNet, rebuildMaze } from 'src/client/maze/rebuild'
 import { initPaintNet, initPaintingSystem } from 'src/client/paint'
-import { initFeetPaint } from 'src/client/placeInput'
+import { initFeetPaint, initPaintHotkey } from 'src/client/placeInput'
 import { initPlayerNet } from 'src/client/player'
 import { runStress } from 'src/client/stress'
 import { setupUi } from 'src/client/ui'
 import { setupTopDownCamera } from 'src/client/topDownCamera'
 import { dragPollSystem } from 'src/client/ui/layers/layer.topDownPan'
 import { initHelpPanelHotkey } from 'src/client/ui/layers/layer.helpPanel'
+import { initLeaderboardHotkey } from 'src/client/ui/layers/layer.leaderboard'
 
 // ─── Stress-test toggle (Squareoff design §8.1) ─────────────────────
 // Set to 0 for normal maze. Non-zero = spawn N planes at spawn, skip maze.
@@ -109,11 +110,17 @@ export async function setupClient(): Promise<void> {
 	// dcl/place: tap-to-place raycast input.
 	initFeetPaint()
 
+	// Desktop hotkey: `F` triggers PAINT (mirrors the button).
+	initPaintHotkey()
+
 	// Spectator: per-frame drag-delta poll (no-op unless drag is active).
 	engine.addSystem(dragPollSystem)
 
 	// Desktop hotkey: `3` toggles the help panel.
 	initHelpPanelHotkey()
+
+	// Desktop hotkey: `4` toggles the leaderboard panel.
+	initLeaderboardHotkey()
 
 	// Wire event subscribers + CRDT paint observers. PaintCoverage /
 	// PaletteEntry / PaintCell / LeaderboardState are server-owned

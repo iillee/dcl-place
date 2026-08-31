@@ -39,6 +39,8 @@ import {
 	updateName as leaderboardUpdateName,
 	publish as publishLeaderboard,
 	getName as leaderboardGetName,
+	isLeaderboardDirty,
+	clearLeaderboardDirty,
 } from 'src/server/leaderboard'
 import {
 	applyPaint,
@@ -166,8 +168,27 @@ export async function setupServer(): Promise<void> {
 	})
 
 	room.onMessage('requestLeaderboard', (_data, context) => {
+		// Kept for back-compat + immediate first-open freshness. Bypasses the
+		// dirty gate on purpose so a newly-opened panel isn't stuck waiting up
+		// to LEADERBOARD_PUBLISH_INTERVAL_S for the next tick.
 		if (!context?.from) return
 		publishLeaderboard()
+		clearLeaderboardDirty()
+	})
+
+	// Throttled leaderboard publish. Every increment / rename marks the
+	// state dirty (see leaderboard.ts); this tick republishes at most once
+	// per interval and only when something actually changed. Broadcast cost
+	// is constant regardless of paint rate.
+	const LEADERBOARD_PUBLISH_INTERVAL_S = 1
+	let leaderboardPublishClock = 0
+	engine.addSystem((dt: number) => {
+		leaderboardPublishClock += dt
+		if (leaderboardPublishClock < LEADERBOARD_PUBLISH_INTERVAL_S) return
+		leaderboardPublishClock = 0
+		if (!isLeaderboardDirty()) return
+		publishLeaderboard()
+		clearLeaderboardDirty()
 	})
 
 	// Coverage publish tick (CRDT, throttled).

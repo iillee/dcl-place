@@ -17,20 +17,24 @@
 
 import {
 	engine, Transform, MeshRenderer, Material, Entity,
+	InputAction, PointerEventType, inputSystem,
 } from '@dcl/sdk/ecs'
+import { isMobile } from '@dcl/sdk/platform'
 import { Vector3, Color4, Quaternion } from '@dcl/sdk/math'
 
 import { room } from 'src/shared/messages'
 import { CELL, STEP, lookupTile } from 'src/shared/maze/generator'
 import { PAINT_COOLDOWN_MS, PAINT_CELL_SIZE_METERS, MAZE_TILE_GLTF_SCALE } from 'src/shared/settings'
-import { placeColor } from 'src/shared/palette'
+import { placeColor, PLACE_PALETTE_SIZE } from 'src/shared/palette'
 
 import { worldToCellId } from 'src/client/paint'
 import {
 	canPlaceNow,
 	getSelectedPaletteIndex,
+	setSelectedPaletteIndex,
 	noteOptimisticSend,
 } from 'src/client/placeState'
+import { playUiClick } from 'src/client/audio'
 
 
 // -------- Highlight cursor (flat colored plane) --------
@@ -227,4 +231,28 @@ export function placeAtFeet(): void {
 	console.log(`[Place] → placePixel ${currentFeetCellId} color=${paletteIndex}`)
 	noteOptimisticSend(PAINT_COOLDOWN_MS)
 	room.send('placePixel', { cellId: currentFeetCellId, paletteIndex })
+}
+
+
+// MARK: initPaintHotkey
+
+/** Desktop hotkeys:
+ *    F (IA_SECONDARY) — fires placeAtFeet(), same as the paint button.
+ *    E (IA_PRIMARY)   — cycles the selected palette color forward,
+ *                       wrapping at the end.
+ *  Mobile has no keyboard; the picker + button own touch input. */
+export function initPaintHotkey(): void {
+	if (isMobile()) return
+	engine.addSystem(() => {
+		if (inputSystem.isTriggered(InputAction.IA_SECONDARY, PointerEventType.PET_DOWN)) {
+			placeAtFeet()
+		}
+		if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
+			// paletteIndex is 1..PLACE_PALETTE_SIZE; wrap 8 → 1.
+			const cur  = getSelectedPaletteIndex()
+			const next = (cur % PLACE_PALETTE_SIZE) + 1
+			setSelectedPaletteIndex(next)
+			playUiClick()
+		}
+	})
 }
