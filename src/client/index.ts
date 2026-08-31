@@ -35,6 +35,7 @@ import { initClientHandler } from 'src/client/clientHandler'
 import { CELL, STEP, lookupTile } from 'src/shared/maze/generator'
 import { initMazeNet, rebuildMaze } from 'src/client/maze/rebuild'
 import { initPaintNet, initPaintingSystem } from 'src/client/paint'
+import { initTapToPlace } from 'src/client/placeInput'
 import { initPlayerNet } from 'src/client/player'
 import { runStress } from 'src/client/stress'
 import { setupUi } from 'src/client/ui'
@@ -100,10 +101,11 @@ export async function setupClient(): Promise<void> {
 		}
 	})
 
-	// Painting system needs a callback to resolve player world position →
-	// the tile they're standing on. lookupTile lives in the generator
-	// module (private grid access).
+	// dcl/place: no walking-paint. Kept as no-op for boot compat.
 	initPaintingSystem(CELL, STEP, lookupTile)
+
+	// dcl/place: tap-to-place raycast input.
+	initTapToPlace()
 
 	// Wire event subscribers + CRDT paint observers. PaintCoverage /
 	// PaletteEntry / PaintCell / LeaderboardState are server-owned
