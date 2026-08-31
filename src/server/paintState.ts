@@ -50,6 +50,9 @@ const cellIndex = new Map<string, number>()
 // Coverage dirty flag — coalesced into PaintCoverage at 5 Hz by server.ts.
 let coverageDirty = false
 
+// Canvas dirty flag — tripped by any accepted paint, cleared after Storage flush.
+let canvasDirty = false
+
 
 // MARK: seedTeamPalette
 
@@ -103,8 +106,41 @@ export function applyPaintIndex(id: string, paletteIndex: number): boolean {
 	if (!writeCellIndex(id, paletteIndex)) return false
 	cellIndex.set(id, paletteIndex)
 	coverageDirty = true
+	canvasDirty   = true
 	return true
 }
+
+
+// MARK: hydratePaintCell
+
+/**
+ * Load-time restore: write a persisted (cellId, paletteIndex) pair into
+ * the authoritative map + CRDT without tripping the canvas dirty flag.
+ * Used by canvasStorage.loadCanvas() on server boot. Skips invalid ids
+ * (bad tile coords, out-of-range palette) silently.
+ */
+export function hydratePaintCell(id: string, paletteIndex: number): boolean {
+	if (paletteIndex < 1 || paletteIndex > PLACE_PALETTE_SIZE) return false
+	if (!writeCellIndex(id, paletteIndex)) return false
+	cellIndex.set(id, paletteIndex)
+	coverageDirty = true // covered cells changed → republish
+	return true
+}
+
+
+// MARK: allPaintedCells
+
+/** Iterate every painted cell as (cellId, paletteIndex). Used by canvasStorage. */
+export function* allPaintedCells(): IterableIterator<[string, number]> {
+	for (const entry of cellIndex) yield entry
+}
+
+
+// MARK: canvas dirty flag
+
+export function isCanvasDirty(): boolean { return canvasDirty }
+export function markCanvasClean(): void { canvasDirty = false }
+export function paintedCellCount(): number { return cellIndex.size }
 
 
 // MARK: internColor

@@ -27,6 +27,7 @@ import {
 	MAZE_GRID_HEIGHT,
 	PAINT_CELLS_PER_TILE_AXIS,
 } from 'src/shared/settings'
+void MAZE_GRID_HEIGHT; void PAINT_CELLS_PER_TILE_AXIS
 import { PLACE_PALETTE_SIZE } from 'src/shared/palette'
 import { Team } from 'src/shared/team'
 
@@ -47,7 +48,10 @@ import {
 	seedPlacePalette,
 	isCoverageDirty,
 	publishCoverage,
+	isCanvasDirty,
+	paintedCellCount,
 } from 'src/server/paintState'
+import { loadCanvas, saveCanvas } from 'src/server/canvasStorage'
 import { initServerStats, startServerStatsTick } from 'src/server/serverStats'
 
 const HEARTBEAT_INTERVAL_S = 5
@@ -57,33 +61,6 @@ const PAINT_SUMMARY_INTERVAL_S = 5
 // In-memory only; resets on server restart, which is fine (a restart already
 // implies the scene has been empty for ~2 min, longer than any cooldown).
 const nextAllowedAt = new Map<string, number>()
-
-
-// MARK: seedStartingArea
-
-/**
- * Paint a small marker square at the center of the canvas so first-load
- * visitors immediately see something. Uses palette index 1 (red).
- */
-function seedStartingArea(): void {
-	const cx = Math.floor((MAZE_GRID_WIDTH  * PAINT_CELLS_PER_TILE_AXIS) / 2)
-	const cz = Math.floor((MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE_AXIS) / 2)
-	const R = 8
-	let painted = 0
-	for (let dz = -R; dz < R; dz++) {
-		for (let dx = -R; dx < R; dx++) {
-			const gx = cx + dx
-			const gz = cz + dz
-			const tx = Math.floor(gx / PAINT_CELLS_PER_TILE_AXIS)
-			const tz = Math.floor(gz / PAINT_CELLS_PER_TILE_AXIS)
-			const col = gx - tx * PAINT_CELLS_PER_TILE_AXIS
-			const row = gz - tz * PAINT_CELLS_PER_TILE_AXIS
-			const id = `${tx},${tz},0:${col},${row}`
-			if (applyPaintIndex(id, 1)) painted++
-		}
-	}
-	console.log(`[Server] seedStartingArea: painted ${painted} cells at grid center`)
-}
 
 
 // MARK: setupServer
@@ -103,7 +80,7 @@ export async function setupServer(): Promise<void> {
 	initPaintSync()
 	seedTeamPalette()   // indexes 0/1/2 (compat)
 	seedPlacePalette()  // indexes 1..16 (dcl/place selectable colors)
-	seedStartingArea()
+	await loadCanvas()  // hydrate persisted pixels before any client connects
 
 	initServerStats()
 	startServerStatsTick(() => coverage().total)
@@ -243,6 +220,17 @@ export async function setupServer(): Promise<void> {
 		if (leaderboardFlushClock < 30) return
 		leaderboardFlushClock = 0
 		void saveLeaderboard()
+	})
+
+	// Periodic canvas flush (every 30s if any pixel changed since last save).
+	let canvasFlushClock = 0
+	engine.addSystem((dt: number) => {
+		canvasFlushClock += dt
+		if (canvasFlushClock < 30) return
+		canvasFlushClock = 0
+		if (!isCanvasDirty()) return
+		console.log(`[Server] canvas dirty — flushing ${paintedCellCount()} cells to Storage`)
+		void saveCanvas()
 	})
 
 	// Discord join flush (join notifications are debounced 5s).
