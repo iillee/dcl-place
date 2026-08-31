@@ -37,6 +37,7 @@ import {
 } from 'src/shared/settings'
 import { Team } from 'src/shared/team'
 import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
+import { playClaimSfx } from 'src/client/audio'
 
 // Re-exports so old imports keep compiling.
 export { MASKS, type Mask }
@@ -99,7 +100,13 @@ function syncPaletteFromCrdt(): void {
 	}
 }
 
+// Hydration gate: the first sync pass loads every persisted pixel and
+// would fire a pop per cell. Flip after the first pass so only live
+// changes make sound. `paintSfxThisFrame` caps output at one pop per
+// frame regardless of how many cells changed (concurrent painters).
+let paintHydrated = false
 function syncCellsFromCrdt(): void {
+	let anyChange = false
 	for (const [entity, cell] of engine.getEntitiesWith(PaintCell)) {
 		const net = NetworkEntity.getOrNull(entity)
 		if (!net) continue
@@ -108,7 +115,10 @@ function syncCellsFromCrdt(): void {
 		if (cellApplied.get(key) === cell.index) continue
 		cellApplied.set(key, cell.index)
 		applyPaintIndex(cellKeyToCellId(key), cell.index, false)
+		anyChange = true
 	}
+	if (anyChange && paintHydrated) playClaimSfx()
+	if (!paintHydrated) paintHydrated = true
 }
 
 

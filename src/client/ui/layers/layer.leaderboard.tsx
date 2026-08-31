@@ -8,8 +8,8 @@
  * freshly-opened panel gets current data without waiting for the next
  * server tick.
  *
- * Toggled by the trophy (★) button in the top bar, or by pressing `4`
- * (IA_ACTION_6) on desktop.
+ * Toggled by the trophy (★) button in the top bar, or by pressing `3`
+ * (IA_ACTION_5) on desktop.
  */
 
 import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
@@ -218,11 +218,11 @@ export function toggleLeaderboard(): void {
 
 
 // MARK: initLeaderboardHotkey
-/** Desktop hotkey: `4` (IA_ACTION_6) toggles the leaderboard. */
+/** Desktop hotkey: `3` (IA_ACTION_5) toggles the leaderboard. */
 export function initLeaderboardHotkey(): void {
 	if (isMobile()) return
 	engine.addSystem(() => {
-		if (inputSystem.isTriggered(InputAction.IA_ACTION_6, PointerEventType.PET_DOWN)) {
+		if (inputSystem.isTriggered(InputAction.IA_ACTION_5, PointerEventType.PET_DOWN)) {
 			playUiClick()
 			toggleLeaderboard()
 		}

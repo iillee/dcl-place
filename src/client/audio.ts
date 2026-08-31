@@ -14,7 +14,7 @@
  * `eventBus` / `ClientEvents` from this module — keeping all audio config in one place.
  */
 
-import { AudioSource, Entity, Transform, engine } from '@dcl/sdk/ecs'
+import { AudioSource, Entity, InputAction, PointerEventType, Transform, engine, inputSystem } from '@dcl/sdk/ecs'
 
 const MUSIC_VOLUME = 0.4
 const MUSIC_SRC = 'assets/sounds/HomeAgain_Loop.mp3'
@@ -43,6 +43,15 @@ export function initAudio(): void {
     global: true,
   })
   playStartMs = Date.now()
+
+  // Desktop hotkey: `2` (IA_ACTION_4) toggles music mute. Matches the
+  // top-bar left-to-right key order: 1 spectator, 2 mute, 3 leaderboard,
+  // 4 help. toggleMusic() already plays the UI click.
+  engine.addSystem(() => {
+    if (inputSystem.isTriggered(InputAction.IA_ACTION_4, PointerEventType.PET_DOWN)) {
+      toggleMusic()
+    }
+  })
 }
 
 export function isMusicMuted(): boolean {

@@ -266,7 +266,30 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 			}}
 			uiBackground = {{ color }}
 			onMouseDown  = {() => setSelectedPaletteIndex(paletteIndex)}
-		/>
+		>
+			{/* Desktop key hint — `E` cycles palette. Only shown on the
+			   selected swatch; flips to black on the white swatch so it
+			   stays readable. */}
+			{isSelected && !isMobile() && (
+				<UiEntity
+					key         = {`swatch_${paletteIndex}_keyHint`}
+					uiTransform = {{
+						positionType  : 'absolute',
+						position      : { left: 0, top: 0 },
+						width         : '100%',
+						height        : '100%',
+						justifyContent: 'center',
+						alignItems    : 'center',
+					}}
+					uiText = {{
+						value    : '<b>E</b>',
+						fontSize : 22,
+						color    : paletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						textAlign: 'middle-center',
+					}}
+				/>
+			)}
+		</UiEntity>
 	)
 }
 

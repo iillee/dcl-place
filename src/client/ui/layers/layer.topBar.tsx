@@ -63,7 +63,7 @@ function PanelButton(props: {
 				justifyContent: 'center',
 				alignItems    : 'center',
 				borderRadius  : borderRadius.md,
-				borderWidth   : 2,
+				borderWidth   : 4,
 				borderColor   : WHITE,
 			}}
 			uiBackground = {{ color: PANEL_BG }}
@@ -101,13 +101,13 @@ function QuestionGlyph(props: { color: Color4 }) {
 	return (
 		<UiEntity
 			uiTransform = {{
-				width: 40, height: 40,
+				width: 44, height: 44,
 				justifyContent: 'center', alignItems: 'center',
-				margin: { bottom: 6 },
+				margin: { bottom: 0, top: 4 },
 			}}
 			uiText = {{
 				value    : '?',
-				fontSize : 36,
+				fontSize : 42,
 				color    : props.color,
 				textAlign: 'middle-center',
 			}}
@@ -138,13 +138,13 @@ function TrophyGlyph(props: { color: Color4 }) {
 	return (
 		<UiEntity
 			uiTransform = {{
-				width: 40, height: 40,
+				width: 44, height: 44,
 				justifyContent: 'center', alignItems: 'center',
-				margin: { bottom: 6 },
+				margin: { bottom: 2, top: 2 },
 			}}
 			uiText = {{
 				value    : '★',
-				fontSize : 32,
+				fontSize : 38,
 				color    : props.color,
 				textAlign: 'middle-center',
 			}}

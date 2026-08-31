@@ -3,7 +3,7 @@
  *
  * Anchored to the TopCenter zone so the slide travels a short, snappy
  * distance. Opened / closed by the Help (?) button in the top bar or by
- * pressing `3` (IA_ACTION_5) on desktop.
+ * pressing `4` (IA_ACTION_6) on desktop.
  *
  * Ported from dcl-snowdrift with content rewritten for dcl/place.
  */
@@ -170,11 +170,11 @@ export function toggleHelpPanel(): void {
 
 
 // MARK: initHelpPanelHotkey
-/** Desktop hotkey: `3` (IA_ACTION_5) toggles the help panel. */
+/** Desktop hotkey: `4` (IA_ACTION_6) toggles the help panel. */
 export function initHelpPanelHotkey(): void {
 	if (isMobile()) return
 	engine.addSystem(() => {
-		if (inputSystem.isTriggered(InputAction.IA_ACTION_5, PointerEventType.PET_DOWN)) {
+		if (inputSystem.isTriggered(InputAction.IA_ACTION_6, PointerEventType.PET_DOWN)) {
 			playUiClick()
 			toggleHelpPanel()
 		}
