@@ -33,24 +33,17 @@ function hex(h: string): Color4 {
 	return Color4.create(((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255, 1)
 }
 
-/** 16 selectable colors — index in this array + 1 = palette index. */
+/** 8 selectable colors — index in this array + 1 = palette index.
+ *  Matches assets/images/pallete.png. */
 export const PLACE_PALETTE: Color4[] = [
-	hex('#E50000'), // 1  red
-	hex('#0000EA'), // 2  blue
-	hex('#FFFFFF'), // 3  white
-	hex('#222222'), // 4  black
-	hex('#888888'), // 5  grey
-	hex('#E4E4E4'), // 6  light grey
-	hex('#A06A42'), // 7  brown
-	hex('#E59500'), // 8  orange
-	hex('#E5D900'), // 9  yellow
-	hex('#94E044'), // 10 lime
-	hex('#02BE01'), // 11 green
-	hex('#00D3DD'), // 12 cyan
-	hex('#0083C7'), // 13 azure
-	hex('#CF6EE4'), // 14 pink
-	hex('#820080'), // 15 magenta
-	hex('#FFA7D1'), // 16 rose
+	hex('#6A99FC'), // 1  blue
+	hex('#FF7577'), // 2  red
+	hex('#FFD66A'), // 3  yellow
+	hex('#7ED596'), // 4  green
+	hex('#B794F4'), // 5  purple
+	hex('#FFB26A'), // 6  orange
+	hex('#FFFFFF'), // 7  white
+	hex('#1A1A1A'), // 8  black
 ]
 
 /** Total selectable colors (excludes PALETTE_NONE). */
