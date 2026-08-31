@@ -78,11 +78,15 @@ export function playUiClick(): void {
  * so no additional throttle needed. Low volume so continuous painting
  * reads as a soft rhythmic sparkle, not a machine gun.
  */
+// Skip the leading silence / attack ramp of pop.mp3 so the transient
+// hits the moment paint fires (was landing ~50ms late).
+const CLAIM_START_SEC = 0.05
 export function playClaimSfx(): void {
   if (!claimSfxEnt) return
   AudioSource.createOrReplace(claimSfxEnt, {
     audioClipUrl: CLAIM_SRC,
     playing: true, loop: false, volume: 0.15, global: true,
+    currentTime: CLAIM_START_SEC,
   })
 }
 

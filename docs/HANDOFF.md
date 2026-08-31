@@ -4,8 +4,8 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main`
-**Last committed session:** e8756ea — "docs: refresh HANDOFF for Day 3-8 progress"
-**This session:** Day 5 (leaderboard UI), Day 7 (mobile/UX polish) + a real palette-seeding bug fix
+**Last committed session:** bc9b1ca — "feat(ui): E glyph on selected swatch, top-bar hotkeys 1-4, pop-on-paint"
+**This session:** UI polish pass — hotkey glyphs, top-bar layout, paint-button on mobile, preview pop-up animation, audio timing
 **Deadline:** September 7, 2026
 
 ---
@@ -71,6 +71,59 @@ The UX iteration:
 - **Top-bar redesign** — added trophy button, added 2px white borders, gave `★`/`?` glyphs a small upward optical nudge, bumped mobile top margin 4→28 (buttons + both slide-down panels move together).
 - **Mobile color picker + paint button** bottom margin raised 16→48 to clear on-screen controls.
 - **Dead code removed** — `src/client/ui/layers/layer.cooldown.tsx` deleted.
+
+---
+
+## 🆕 Latest UI polish session
+
+### Bottom bar
+- **`E` glyph** centered on the currently-selected swatch (desktop only),
+  white with black flip on the white swatch — mirrors the `F`-on-paint pattern.
+- **Selection border** now includes `sel`/`unsel` in the swatch `key` so
+  react-ecs remounts the entity on selection change; fixes a mobile bug
+  where `borderWidth`/`borderColor` updates silently no-op'd on an
+  already-mounted UiEntity.
+- **Selection safety-net poll** — the cooldown system now also mirrors
+  `getSelectedPaletteIndex()` into props every frame, so selection stays
+  in sync even if the `subscribePlaceState` → `props.set` path fails.
+- **Paint button fill overflow fix** — the absolute fill frame now uses
+  explicit pixel `width/height = PAINT_BTN_W/H - PAINT_BORDER_W*2` at
+  `position:{left:0,top:0}` instead of `100%`, which was measuring from
+  the outer border-box and leaking past the bottom/right on mobile.
+- **Mobile paint tap fix** — the absolute fill overlay was eating taps
+  before they bubbled to the parent's `onMouseDown`. Duplicated the
+  paint handler onto the fill frame so any tap inside the button fires.
+- **Mobile paint button width** — 2× (96 → 192px) since there's no F key.
+
+### Top bar
+- **Hotkeys aligned left→right:** 1 spectator, 2 mute, 3 leaderboard, 4 help.
+  Swapped leaderboard `IA_ACTION_6` → `IA_ACTION_5` and help `IA_ACTION_5`
+  → `IA_ACTION_6`; mute (`IA_ACTION_4`) hotkey system registered inside
+  `initAudio()`.
+- **★ / ?** bumped larger (32/36 → 46/50) with 4px white border (matches
+  the paint button frame). Desktop centers naturally; mobile applies
+  `padBottom: 28` on the button parent to nudge the centered glyph up
+  (compensates for the mobile UI DPI scale).
+
+### Preview cursor
+- **Pop-up-from-ground animation** — the preview cube grows from height 0
+  to full over 180ms with an ease-out-back curve, bottom anchored at the
+  tile plane so it rises out of the ground. `hideHighlight()` resets pop
+  state so re-entering plays fresh. Wireframe edges scale with it.
+- **Color match** — removed `emissiveColor` / `emissiveIntensity: 0.4`
+  from the preview material. It was pushing the highlight brighter than
+  the paint it was previewing (so the placed pixel looked "duller"). Now
+  matches `paint.ts cellMaterialFromColor` exactly. Black wireframe
+  still marks it as a preview.
+- **Wireframe thickness** bumped 0.02m → 0.05m.
+
+### Audio
+- **Pop-on-any-paint** — `syncCellsFromCrdt()` now fires `playClaimSfx()`
+  when any live paint arrives (yours or anyone else's). Gated by a
+  `paintHydrated` flag so the initial persisted-canvas load stays silent,
+  and coalesced to one pop per frame to avoid concurrent-painter spam.
+- **Attack trim** — `playClaimSfx()` sets `currentTime: 0.05` to skip
+  pop.mp3's leading silence so the transient hits at the moment of paint.
 
 ---
 

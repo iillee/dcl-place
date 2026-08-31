@@ -51,6 +51,8 @@ const WHITE = Color4.White()
 function PanelButton(props: {
 	keyId    : string
 	onPress  : () => void
+	/** Optional bottom padding — pushes the centered child upward. */
+	padBottom?: number
 	children?: ReactEcs.JSX.Element | ReactEcs.JSX.Element[]
 }) {
 	return (
@@ -60,6 +62,7 @@ function PanelButton(props: {
 				width         : BTN_SIZE,
 				height        : BTN_SIZE,
 				margin        : { left: BTN_GAP / 2, right: BTN_GAP / 2 },
+				padding       : { bottom: props.padBottom ?? 0 },
 				justifyContent: 'center',
 				alignItems    : 'center',
 				borderRadius  : borderRadius.md,
@@ -101,13 +104,12 @@ function QuestionGlyph(props: { color: Color4 }) {
 	return (
 		<UiEntity
 			uiTransform = {{
-				width: 44, height: 44,
+				width: 50, height: 50,
 				justifyContent: 'center', alignItems: 'center',
-				margin: { bottom: 0, top: 4 },
 			}}
 			uiText = {{
 				value    : '?',
-				fontSize : 42,
+				fontSize : 50,
 				color    : props.color,
 				textAlign: 'middle-center',
 			}}
@@ -138,13 +140,12 @@ function TrophyGlyph(props: { color: Color4 }) {
 	return (
 		<UiEntity
 			uiTransform = {{
-				width: 44, height: 44,
+				width: 50, height: 50,
 				justifyContent: 'center', alignItems: 'center',
-				margin: { bottom: 2, top: 2 },
 			}}
 			uiText = {{
 				value    : '★',
-				fontSize : 38,
+				fontSize : 46,
 				color    : props.color,
 				textAlign: 'middle-center',
 			}}
@@ -226,15 +227,17 @@ class TopBarLayer extends Layer {
 				</PanelButton>
 
 				<PanelButton
-					keyId   = "ui_TopBar_lb"
-					onPress = {() => { playUiClick(); toggleLeaderboard() }}
+					keyId     = "ui_TopBar_lb"
+					padBottom = {isMobile() ? 28 : 0}
+					onPress   = {() => { playUiClick(); toggleLeaderboard() }}
 				>
 					<TrophyGlyph color={lbOpen ? GOLD : WHITE} />
 				</PanelButton>
 
 				<PanelButton
-					keyId   = "ui_TopBar_help"
-					onPress = {() => { playUiClick(); toggleHelpPanel() }}
+					keyId     = "ui_TopBar_help"
+					padBottom = {isMobile() ? 28 : 0}
+					onPress   = {() => { playUiClick(); toggleHelpPanel() }}
 				>
 					<QuestionGlyph color={helpOpen ? GOLD : WHITE} />
 				</PanelButton>

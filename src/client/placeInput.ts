@@ -43,7 +43,7 @@ let highlight: Entity | null = null
 let edges: Entity[] | null = null
 
 // Match dcl-canvas: thin black wireframe (4 top + 4 vertical corners, 8 total).
-const EDGE_THICKNESS = 0.02
+const EDGE_THICKNESS = 0.05
 const EDGES_PER_CUBE = 8
 const HIDDEN_SCALE  = Vector3.create(0, 0, 0)
 const CURSOR_HEIGHT = 0.1 // total cube height; bottom flush with the painted tile plane, top 0.1m above
@@ -64,6 +64,33 @@ const GROUND_TOLERANCE = 0.4
 /** Latest resolved feet-cell — refreshed every frame by the feet system.
  *  `placeAtFeet()` reads this when the player taps PAINT. */
 let currentFeetCellId: string | null = null
+
+// -------- Pop-up animation state --------
+// When the player enters a new cell (or re-enters after being airborne /
+// off-grid), the preview box grows from height 0 to full over POP_MS with
+// an ease-out-back curve so it visibly rises out of the ground instead of
+// snapping in. `popCellId` tracks which cell the current animation belongs
+// to; when it differs from the resolved cellId we restart the anim.
+const POP_MS = 180
+let popCellId: string | null = null
+let popStartMs = 0
+
+/** ease-out-back: overshoots slightly past 1 then settles, giving a
+ *  cartoony "pop". c1/c3 are the standard easings.net constants. */
+function easeOutBack(t: number): number {
+	const c1 = 1.70158
+	const c3 = c1 + 1
+	return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2)
+}
+
+function popProgress(cellId: string): number {
+	if (popCellId !== cellId) {
+		popCellId   = cellId
+		popStartMs  = Date.now()
+	}
+	const raw = Math.min(1, Math.max(0, (Date.now() - popStartMs) / POP_MS))
+	return easeOutBack(raw)
+}
 
 
 function ensureHighlight(): Entity {
@@ -100,12 +127,12 @@ function ensureEdges(): Entity[] {
 }
 
 
-function positionEdges(cx: number, yBottom: number, cz: number): void {
+function positionEdges(cx: number, yBottom: number, cz: number, heightScale: number): void {
 	const arr = ensureEdges()
 	const E = EDGE_THICKNESS
 	const W = PAINT_CELL_SIZE_METERS * 0.95
 	const D = W
-	const H = CURSOR_HEIGHT
+	const H = CURSOR_HEIGHT * heightScale
 	const yTop = yBottom + H
 	const yMid = yBottom + H / 2
 	const set = (i: number, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
@@ -140,18 +167,24 @@ function hideEdges(): void {
 }
 
 
-function positionHighlight(x: number, y: number, z: number, index: number): void {
+function positionHighlight(x: number, y: number, z: number, index: number, heightScale: number): void {
 	const e = ensureHighlight()
 	const color = placeColor(index) ?? Color4.create(1, 1, 1, 1)
+	const h     = CURSOR_HEIGHT * heightScale
+	// Anchor bottom to the tile plane so the cube visibly grows upward
+	// out of the ground: y_center = yBottom + h/2, and yBottom = y - TILE_PLANE_DROP.
 	Transform.createOrReplace(e, {
-		position: Vector3.create(x, y - TILE_PLANE_DROP + CURSOR_HEIGHT / 2, z), // bottom flush with painted tile plane, top 0.1m above
+		position: Vector3.create(x, y - TILE_PLANE_DROP + h / 2, z),
 		rotation: Quaternion.Identity(),
-		scale:    Vector3.create(PAINT_CELL_SIZE_METERS * 0.95, CURSOR_HEIGHT, PAINT_CELL_SIZE_METERS * 0.95),
+		scale:    Vector3.create(PAINT_CELL_SIZE_METERS * 0.95, h, PAINT_CELL_SIZE_METERS * 0.95),
 	})
+	// Match the painted-cell material exactly (paint.ts cellMaterialFromColor):
+	// albedo only, no emissive. Emissive was pushing the preview brighter
+	// than the paint it was previewing, so the placed pixel looked "duller"
+	// than the highlight. The black wireframe already distinguishes it as
+	// a preview.
 	Material.setPbrMaterial(e, {
 		albedoColor:       Color4.create(color.r, color.g, color.b, 1),
-		emissiveColor:     color,
-		emissiveIntensity: 0.4,
 		roughness:         1.0,
 		metallic:          0.0,
 		specularIntensity: 0.0,
@@ -161,6 +194,10 @@ function positionHighlight(x: number, y: number, z: number, index: number): void
 
 function hideHighlight(): void {
 	currentFeetCellId = null
+	// Reset pop state so the NEXT cell we land on triggers a fresh
+	// grow-from-ground animation instead of appearing full-size.
+	popCellId  = null
+	popStartMs = 0
 	if (highlight !== null) {
 		const t = Transform.getMutableOrNull(highlight)
 		if (t) t.scale = HIDDEN_SCALE
@@ -204,8 +241,9 @@ export function initFeetPaint(): void {
 		currentFeetCellId = cell.id
 		const { cx, cz } = snapCellCenter(p.x, p.z)
 		const yBottom = cell.groundY - TILE_PLANE_DROP
-		positionHighlight(cx, cell.groundY, cz, getSelectedPaletteIndex())
-		positionEdges(cx, yBottom, cz)
+		const hs      = popProgress(cell.id)
+		positionHighlight(cx, cell.groundY, cz, getSelectedPaletteIndex(), hs)
+		positionEdges(cx, yBottom, cz, hs)
 	})
 }
 

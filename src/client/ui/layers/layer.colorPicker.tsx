@@ -40,7 +40,9 @@ const PANEL_PAD       = 10
 // Paint button sits inline to the right of the swatch panel. Height
 // matches the panel (SWATCH_SIZE + PANEL_PAD*2 = 76) so both read as one
 // row; width gives the fill room to feel like progress, not a dot.
-const PAINT_BTN_W       = 96
+// Mobile gets a wider paint button (2×) since it's the primary tap
+// target — no F key fallback on mobile.
+const PAINT_BTN_W       = isMobile() ? 192 : 96
 const PAINT_BTN_H       = SWATCH_SIZE + PANEL_PAD * 2
 const PAINT_BTN_GAP     = 10
 // Snowdrift torch pattern: framed button with an inset fill that grows
@@ -107,10 +109,15 @@ class ColorPickerLayer extends Layer {
 		})
 
 		// Cooldown poll — bucketize to 100ms so we don't rerender every
-		// single frame while nothing visible has changed.
+		// single frame while nothing visible has changed. Also polls the
+		// selected palette index as a safety net for mobile, where the
+		// subscribePlaceState notify -> props.set path occasionally fails
+		// to redraw the selection border on tap.
 		let lastBucket = -1
 		engine.addSystem(() => {
 			if (!this.props) return
+			const sel = getSelectedPaletteIndex()
+			if (sel !== this.props.get('selected')) this.props.set('selected', sel)
 			const remaining = cooldownRemainingMs()
 			const bucket    = Math.ceil(remaining / 100)
 			if (bucket === lastBucket) return
@@ -194,10 +201,23 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 			   the identical pattern with column + flex-end for bottom-up. */}
 			<UiEntity
 				key         = "ui_PaintBtn_fillFrame"
+				// Absolute overlay covers the whole button, so on mobile it
+				// intercepts taps before they bubble to the parent's
+				// onMouseDown. Duplicate the paint handler here so tapping
+				// anywhere on the button actually paints.
+				onMouseDown = {() => { if (canPlaceNow()) placeAtFeet() }}
 				uiTransform = {{
 					positionType   : 'absolute',
-					width          : '100%',
-					height         : '100%',
+					// Explicit pixel size subtracting the border on both axes.
+					// `width:'100%'` measured from the outer border-box (leaking
+					// PAINT_BORDER_W past the frame on mobile); anchor-all-edges
+					// via `position:{left,right,top,bottom:0}` didn't render
+					// reliably. Fixed pixel dims + position 0,0 (which Yoga
+					// resolves to the top-left of the padding box, i.e. inside
+					// the border) is the one that actually pins the fill.
+					position       : { left: 0, top: 0 },
+					width          : PAINT_BTN_W - PAINT_BORDER_W * 2,
+					height         : PAINT_BTN_H - PAINT_BORDER_W * 2,
 					padding        : {
 						top   : PAINT_FILL_INSET,
 						bottom: PAINT_FILL_INSET,
@@ -254,7 +274,13 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 	const selBorder = paletteIndex === WHITE_PALETTE_INDEX ? SELECT_RING_BLACK : colors.light
 	return (
 		<UiEntity
-			key         = {`swatch_${paletteIndex}`}
+			// Include selection state in the key so the swatch REMOUNTS
+			// when it's selected / deselected. DCL react-ecs sometimes
+			// fails to update borderWidth / borderColor on an already-
+			// mounted UiEntity (works on desktop, silently no-ops on
+			// mobile), so a key change is the reliable way to make the
+			// selection ring appear on the newly-tapped swatch.
+			key         = {`swatch_${paletteIndex}_${isSelected ? 'sel' : 'unsel'}`}
 			uiTransform = {{
 				width       : SWATCH_SIZE,
 				height      : SWATCH_SIZE,
