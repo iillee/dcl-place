@@ -53,16 +53,16 @@ export const PAINT_BRUSH_SIZE_METERS = 6
 
 // MARK: Scene
 
-/** Scene X extent in meters (10 parcels × 16 m). Aligns with parcel X axis. */
-export const SCENE_WORLD_SIZE_X_METERS = 160
+/** Scene X extent in meters (20 parcels × 16 m). Aligns with parcel X axis. */
+export const SCENE_WORLD_SIZE_X_METERS = 320
 
-/** Scene Z extent in meters (10 parcels × 16 m). Aligns with parcel Y axis (world Z). */
-export const SCENE_WORLD_SIZE_Z_METERS = 160
+/** Scene Z extent in meters (20 parcels × 16 m). Aligns with parcel Y axis (world Z). */
+export const SCENE_WORLD_SIZE_Z_METERS = 320
 
 // MARK: dcl/place
 
 /** Milliseconds a player must wait between placing pixels (r/place cooldown). */
-export const PAINT_COOLDOWN_MS = 10_000
+export const PAINT_COOLDOWN_MS = 3_000
 
 /** Max cells a single client is allowed to send in one paintTick. r/place is 1 pixel per tick. */
 export const PAINT_TICK_MAX_CELLS = 1
@@ -78,10 +78,14 @@ export const SCENE_WORLD_SIZE_METERS = SCENE_WORLD_SIZE_X_METERS
 
 /**
  * Uniform scale applied to maze tile GLBs.
- * 1 → 16 m tiles (parcel-sized). 16 m fits both 256 and 144 evenly → no
- * border on either axis. 2 → 32 m tiles (pixelwars original).
+ * 1 → 16 m tiles (parcel-sized). 2 → 32 m tiles (pixelwars scale).
+ *
+ * dcl/place uses 2 so each paint cell is 2 m instead of 1 m — pixels are
+ * chunky enough to read from spectator altitude and to comfortably
+ * stand-on with an avatar. Grid stays 10×10 tiles (320 m / 32 m); total
+ * pixels 160×160 = 25,600 (matches the original 1 m plan).
  */
-export const MAZE_TILE_GLTF_SCALE = 1
+export const MAZE_TILE_GLTF_SCALE = 2
 
 /** Unscaled tile footprint in meters (one parcel edge). */
 export const MAZE_TILE_UNSCALED_METERS = 16
