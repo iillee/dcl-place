@@ -201,6 +201,34 @@ export function applyPaintIndex(id: string, index: number, force: boolean): void
 }
 
 
+// -------- Local-only preview (feet-based painting) --------
+// The feet system tints the actual cell entity as the avatar walks over it
+// so the player sees exactly what would be painted. renderedIndex (the
+// authoritative "what has the server told us this cell is" map) is NOT
+// touched — restoreCellMaterial() reads it to revert on cell exit.
+
+/** Tint the cell entity with a palette color WITHOUT recording it as
+ *  server truth. Safe to call every frame while the avatar stands on
+ *  the same cell (early exits below the SDK's own dirty-check). */
+export function setCellPreviewMaterial(id: string, paletteIndex: number): void {
+	const data = cellData.get(id)
+	if (!data) return
+	const mat = cellMaterialForIndex(paletteIndex) ?? NONE_MAT
+	Material.setPbrMaterial(data.entity, mat)
+}
+
+/** Reset a cell's material to whatever the server last told us it should
+ *  be (or the unpainted default). Call when the avatar leaves a preview
+ *  cell so we don't lie about the canvas state. */
+export function restoreCellMaterial(id: string): void {
+	const data = cellData.get(id)
+	if (!data) return
+	const index = renderedIndex.get(id) ?? PALETTE_NONE
+	const mat   = cellMaterialForIndex(index) ?? NONE_MAT
+	Material.setPbrMaterial(data.entity, mat)
+}
+
+
 // -------- Public: teardown helpers used by maze/rebuild --------
 
 export function clearAllPaintState(): void {
@@ -412,7 +440,12 @@ export function coverage(): { red: number; blue: number; total: number } {
 
 // -------- World → cellId (for tap-to-place raycast hit) --------
 
-const WALKABLE_TOP = 0.5
+// Height of the walkable floor top above the tile origin. The tile GLB
+// bakes ~0.5 m of floor thickness at TILE_SCALE=1; that thickness scales
+// uniformly with MAZE_TILE_GLTF_SCALE. Kept as an import from settings
+// so scaling the whole scene doesn't leave the highlight buried under
+// the tile floor mesh.
+const WALKABLE_TOP = 0.5 * MAZE_TILE_GLTF_SCALE
 
 export function worldToCellId(
 	px: number, py: number, pz: number,

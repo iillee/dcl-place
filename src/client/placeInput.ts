@@ -1,28 +1,28 @@
 /**
- * placeInput.ts — dcl/place tap-to-place + 1×1 highlight cursor.
+ * placeInput.ts — dcl/place feet-based placement + 1×1 highlight cursor.
  *
- * Each maze tile registers pointerEventsSystem.onPointerDown; the tap
- * callback (onTileTapped) reads the last pointer command's hit position,
- * resolves cellId, and sends `placePixel`.
+ * Design shift (Day 3): the selection cursor tracks the tile UNDER THE
+ * AVATAR'S FEET, not the on-screen pointer. Players place a pixel by
+ * walking to a cell and tapping the PAINT button (cooldown pill in the
+ * UI). This encourages movement and makes the canvas feel like a shared
+ * physical space rather than a shared paint program — social players
+ * bumping into each other while they hunt for empty pixels.
  *
- * Alongside that, a continuous local-direction raycast from the camera
- * finds the cell under the crosshair every frame and moves a small
- * highlight box to sit on top of it. That gives cell-accurate feedback
- * without adding a PointerEvents component to every one of the 25,600
- * paint cells.
+ * Two pieces:
+ *   1. Per-frame system: reads player Transform → resolves cellId under
+ *      feet → moves a flat colored highlight plane to sit on that cell.
+ *   2. `placeAtFeet()`: called by the PAINT button; validates cooldown,
+ *      resolves the current feet-cell, sends `placePixel` to the server.
  */
 
 import {
 	engine, Transform, MeshRenderer, Material, Entity,
-	inputSystem, InputAction, PointerEventType,
-	raycastSystem, RaycastQueryType,
-	ColliderLayer, PrimaryPointerInfo,
 } from '@dcl/sdk/ecs'
 import { Vector3, Color4, Quaternion } from '@dcl/sdk/math'
 
 import { room } from 'src/shared/messages'
 import { CELL, STEP, lookupTile } from 'src/shared/maze/generator'
-import { PAINT_COOLDOWN_MS, PAINT_CELL_SIZE_METERS } from 'src/shared/settings'
+import { PAINT_COOLDOWN_MS, PAINT_CELL_SIZE_METERS, MAZE_TILE_GLTF_SCALE } from 'src/shared/settings'
 import { placeColor } from 'src/shared/palette'
 
 import { worldToCellId } from 'src/client/paint'
@@ -36,15 +36,37 @@ import {
 // -------- Highlight cursor (flat colored plane) --------
 
 let highlight: Entity | null = null
-const HIDDEN_SCALE = Vector3.create(0, 0, 0)
-const CURSOR_LIFT  = 0.03 // world m above the paint slab so it doesn't z-fight
+let edges: Entity[] | null = null
+
+// Match dcl-canvas: thin black wireframe (4 top + 4 vertical corners, 8 total).
+const EDGE_THICKNESS = 0.02
+const EDGES_PER_CUBE = 8
+const HIDDEN_SCALE  = Vector3.create(0, 0, 0)
+const CURSOR_HEIGHT = 0.1 // total cube height; bottom flush with the painted tile plane, top 0.1m above
+
+// worldToCellId returns groundY = tile.y + WALKABLE_TOP (the walkable floor top).
+// The visible painted slabs (paint.ts FLAT_OFFSET) sit lower than that. Offset
+// the highlight down by the delta so the cube's bottom is flush with the slab.
+const WALKABLE_TOP_M = 0.5   * MAZE_TILE_GLTF_SCALE
+const FLAT_OFFSET_M  = 0.275 * MAZE_TILE_GLTF_SCALE
+const TILE_PLANE_DROP = WALKABLE_TOP_M - FLAT_OFFSET_M
+
+// Max distance (world m) the avatar's feet may sit above the walkable
+// surface and still count as "on the tile". Anything larger — jumping,
+// gliding, falling — hides the highlight and blocks placement. Matches
+// dcl-canvas GROUND_TOLERANCE.
+const GROUND_TOLERANCE = 0.4
+
+/** Latest resolved feet-cell — refreshed every frame by the feet system.
+ *  `placeAtFeet()` reads this when the player taps PAINT. */
+let currentFeetCellId: string | null = null
 
 
 function ensureHighlight(): Entity {
 	if (highlight !== null) return highlight
 	const e = engine.addEntity()
 	Transform.create(e, { scale: HIDDEN_SCALE })
-	MeshRenderer.setPlane(e)
+	MeshRenderer.setBox(e)
 	Material.setPbrMaterial(e, {
 		albedoColor: Color4.create(1, 1, 1, 0.5),
 		emissiveColor: Color4.create(1, 1, 1, 1),
@@ -58,16 +80,72 @@ function ensureHighlight(): Entity {
 }
 
 
+function ensureEdges(): Entity[] {
+	if (edges !== null) return edges
+	const mat = { albedoColor: Color4.Black(), emissiveColor: Color4.Black(), roughness: 1.0, metallic: 0.0, specularIntensity: 0.0 }
+	const arr: Entity[] = []
+	for (let i = 0; i < EDGES_PER_CUBE; i++) {
+		const e = engine.addEntity()
+		Transform.create(e, { scale: HIDDEN_SCALE })
+		MeshRenderer.setBox(e)
+		Material.setPbrMaterial(e, mat)
+		arr.push(e)
+	}
+	edges = arr
+	return arr
+}
+
+
+function positionEdges(cx: number, yBottom: number, cz: number): void {
+	const arr = ensureEdges()
+	const E = EDGE_THICKNESS
+	const W = PAINT_CELL_SIZE_METERS * 0.95
+	const D = W
+	const H = CURSOR_HEIGHT
+	const yTop = yBottom + H
+	const yMid = yBottom + H / 2
+	const set = (i: number, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+		const t = Transform.getMutableOrNull(arr[i])
+		if (t) {
+			t.position = Vector3.create(x, y, z)
+			t.scale    = Vector3.create(sx, sy, sz)
+			t.rotation = Quaternion.Identity()
+		} else {
+			Transform.create(arr[i], { position: Vector3.create(x, y, z), scale: Vector3.create(sx, sy, sz) })
+		}
+	}
+	// 4 top edges.
+	set(0, cx,       yTop, cz + D/2, W, E, E)
+	set(1, cx,       yTop, cz - D/2, W, E, E)
+	set(2, cx - W/2, yTop, cz,       E, E, D)
+	set(3, cx + W/2, yTop, cz,       E, E, D)
+	// 4 vertical corner edges.
+	set(4, cx - W/2, yMid, cz - D/2, E, H, E)
+	set(5, cx + W/2, yMid, cz - D/2, E, H, E)
+	set(6, cx - W/2, yMid, cz + D/2, E, H, E)
+	set(7, cx + W/2, yMid, cz + D/2, E, H, E)
+}
+
+
+function hideEdges(): void {
+	if (edges === null) return
+	for (const e of edges) {
+		const t = Transform.getMutableOrNull(e)
+		if (t) t.scale = HIDDEN_SCALE
+	}
+}
+
+
 function positionHighlight(x: number, y: number, z: number, index: number): void {
 	const e = ensureHighlight()
 	const color = placeColor(index) ?? Color4.create(1, 1, 1, 1)
 	Transform.createOrReplace(e, {
-		position: Vector3.create(x, y + CURSOR_LIFT, z),
-		rotation: Quaternion.fromEulerDegrees(-90, 0, 0),
-		scale:    Vector3.create(PAINT_CELL_SIZE_METERS * 0.95, PAINT_CELL_SIZE_METERS * 0.95, 1),
+		position: Vector3.create(x, y - TILE_PLANE_DROP + CURSOR_HEIGHT / 2, z), // bottom flush with painted tile plane, top 0.1m above
+		rotation: Quaternion.Identity(),
+		scale:    Vector3.create(PAINT_CELL_SIZE_METERS * 0.95, CURSOR_HEIGHT, PAINT_CELL_SIZE_METERS * 0.95),
 	})
 	Material.setPbrMaterial(e, {
-		albedoColor:       Color4.create(color.r, color.g, color.b, 0.6),
+		albedoColor:       Color4.create(color.r, color.g, color.b, 1),
 		emissiveColor:     color,
 		emissiveIntensity: 0.4,
 		roughness:         1.0,
@@ -78,9 +156,12 @@ function positionHighlight(x: number, y: number, z: number, index: number): void
 
 
 function hideHighlight(): void {
-	if (highlight === null) return
-	const t = Transform.getMutableOrNull(highlight)
-	if (t) t.scale = HIDDEN_SCALE
+	currentFeetCellId = null
+	if (highlight !== null) {
+		const t = Transform.getMutableOrNull(highlight)
+		if (t) t.scale = HIDDEN_SCALE
+	}
+	hideEdges()
 }
 
 
@@ -93,65 +174,57 @@ function snapCellCenter(px: number, pz: number): { cx: number; cz: number } {
 }
 
 
-// MARK: initTapToPlace — continuous highlight raycast
+// MARK: initFeetPaint
 
-export function initTapToPlace(): void {
-	console.log('[Place] tap-to-place ready — 16-color palette, 10s cooldown')
+/**
+ * Wires up a per-frame system that tracks the avatar's feet, resolves the
+ * paint cell they're standing on, and moves the highlight plane to sit
+ * on top of it. The resolved cellId is cached in `currentFeetCellId` for
+ * `placeAtFeet()` to read on demand.
+ */
+export function initFeetPaint(): void {
+	console.log('[Place] feet-based paint ready — walk to a cell, tap PAINT to place')
 
-	// Continuous local-direction raycast from the camera. The callback runs
-	// every time the SDK produces a new raycast result (~1 per frame).
-	// Cursor-driven raycast: every frame, re-issue a synchronous raycast
-	// from the camera along the current PrimaryPointerInfo.worldRayDirection
-	// so the highlight tracks the actual on-screen pointer (mouse, touch,
-	// or locked-crosshair) rather than just camera-forward.
 	engine.addSystem(() => {
-		const info = PrimaryPointerInfo.getOrNull(engine.RootEntity)
-		const dir  = info?.worldRayDirection ?? Vector3.create(0, 0, 1)
-		const opts = raycastSystem.globalDirectionOptions({
-			queryType:     RaycastQueryType.RQT_HIT_FIRST,
-			maxDistance:   64,
-			collisionMask: ColliderLayer.CL_PHYSICS,
-			direction:     Vector3.create(dir.x, dir.y, dir.z),
-		})
-		const result = raycastSystem.registerRaycast(engine.CameraEntity, opts)
-		// Null result = frame with no fresh raycast reply; keep last highlight
-		// position rather than flickering off.
-		if (!result) return
-		const hit = result.hits && result.hits[0]
-		if (!hit || !hit.position) { hideHighlight(); return }
-		const cell = worldToCellId(
-			hit.position.x, hit.position.y, hit.position.z,
-			CELL, STEP, lookupTile,
-		)
+		const t = Transform.getOrNull(engine.PlayerEntity)
+		if (!t) { hideHighlight(); return }
+		const p = t.position
+
+		const cell = worldToCellId(p.x, p.y, p.z, CELL, STEP, lookupTile)
 		if (!cell) { hideHighlight(); return }
-		const { cx, cz } = snapCellCenter(hit.position.x, hit.position.z)
+
+		// Airborne gate: hide preview + block placement when the player's
+		// feet aren't near the walkable surface (jumping / gliding).
+		if (p.y - cell.groundY > GROUND_TOLERANCE) { hideHighlight(); return }
+
+		currentFeetCellId = cell.id
+		const { cx, cz } = snapCellCenter(p.x, p.z)
+		const yBottom = cell.groundY - TILE_PLANE_DROP
 		positionHighlight(cx, cell.groundY, cz, getSelectedPaletteIndex())
+		positionEdges(cx, yBottom, cz)
 	})
 }
 
 
-// MARK: onTileTapped — invoked by pointerEventsSystem on any maze tile
+// MARK: placeAtFeet
 
-export function onTileTapped(tileEntity: Entity): void {
-	const cmd = inputSystem.getInputCommand(
-		InputAction.IA_POINTER,
-		PointerEventType.PET_DOWN,
-		tileEntity,
-	)
-	if (!cmd) return
-	const hit = cmd.hit
-	if (!hit || !hit.position) return
+/**
+ * Called by the PAINT button (cooldown pill). Sends `placePixel` for the
+ * cell currently under the avatar's feet, using the selected palette
+ * index. Silent no-op if cooldown is active or the avatar isn't standing
+ * on a valid cell.
+ */
+export function placeAtFeet(): void {
 	if (!canPlaceNow()) {
 		console.log('[Place] tap ignored — cooldown active')
 		return
 	}
+	if (!currentFeetCellId) {
+		console.log('[Place] tap ignored — no valid cell under feet')
+		return
+	}
 	const paletteIndex = getSelectedPaletteIndex()
-	const cellRes = worldToCellId(
-		hit.position.x, hit.position.y, hit.position.z,
-		CELL, STEP, lookupTile,
-	)
-	if (!cellRes) return
-	console.log(`[Place] → placePixel ${cellRes.id} color=${paletteIndex}`)
+	console.log(`[Place] → placePixel ${currentFeetCellId} color=${paletteIndex}`)
 	noteOptimisticSend(PAINT_COOLDOWN_MS)
-	room.send('placePixel', { cellId: cellRes.id, paletteIndex })
+	room.send('placePixel', { cellId: currentFeetCellId, paletteIndex })
 }

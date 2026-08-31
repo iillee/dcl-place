@@ -19,11 +19,8 @@
 import {
   engine, Transform, GltfContainer, ColliderLayer,
   Tween, EasingFunction, AudioSource, Entity, MeshRenderer, Material,
-  pointerEventsSystem, InputAction,
 } from '@dcl/sdk/ecs'
 import { Vector3, Quaternion } from '@dcl/sdk/math'
-
-import { onTileTapped } from 'src/client/placeInput'
 
 import { SeedHolder, seedHolder } from 'src/shared/components'
 import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
@@ -153,15 +150,14 @@ function spawnTileWithGrow(p: Placed): void {
   })
   GltfContainer.create(e, {
     src: TILES[p.type].model,
-    visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS | ColliderLayer.CL_POINTER,
+    // Physics only — the avatar walks on tiles, but pointer collisions
+    // are no longer needed now that painting is feet-based.
+    visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS,
   })
-  // dcl/place: any tap on this tile becomes a paint request. The callback
-  // receives the world-space hit position via inputSystem in the handler.
-  // No hoverText — the highlight is drawn cell-sized by placeInput.
-  pointerEventsSystem.onPointerDown(
-    { entity: e, opts: { button: InputAction.IA_POINTER, hoverText: '', maxDistance: 64, showFeedback: false } },
-    () => { onTileTapped(e) },
-  )
+  // dcl/place (Day 3): tile tap-to-paint removed. Painting now happens
+  // via the PAINT button in the UI, targeting the cell under the avatar's
+  // feet (see src/client/placeInput.ts). Tiles keep CL_PHYSICS colliders
+  // so the avatar can walk on them, but no pointer handler is registered.
   Tween.create(e, {
     mode: Tween.Mode.Scale({
       start: Vector3.create(0.001, 0.001, 0.001),
