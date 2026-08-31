@@ -54,8 +54,17 @@ export const PLACE_PALETTE_SIZE = PLACE_PALETTE.length
 // Preserved so paintState.ts / paintSync.ts / server.ts keep compiling
 // while we migrate. Only indexes 0/1/2 are meaningful here.
 
+// TEAM_COLORS[None] doubles as the "unpainted" tile color (palette
+// index 0). It MUST be distinct from every entry in PLACE_PALETTE, or
+// internColor() dedup on the server will alias the collision back to
+// index 0 and the real palette slot will never get a valid PaletteEntry
+// written to CRDT (visible bug: that color renders as black on clients).
+// Light grey #EAEAEA reads as a clean blank canvas and stays clearly
+// distinguishable from palette-white (#FFFFFF).
+const UNPAINTED_GREY = Color4.create(0.918, 0.918, 0.918, 1) // #EAEAEA
+
 export const TEAM_COLORS: Record<Team, Color4> = {
-	[Team.None]: Color4.create(1, 1, 1, 1),
+	[Team.None]: UNPAINTED_GREY,
 	[Team.Red]:  PLACE_PALETTE[0], // palette index 1
 	[Team.Blue]: PLACE_PALETTE[1], // palette index 2
 }

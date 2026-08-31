@@ -180,7 +180,11 @@ function cellMaterialFromColor(color: Color4) {
 	}
 }
 
-const NONE_MAT = cellMaterialFromColor(Color4.create(1, 1, 1, 1))
+// Fallback material for unpainted cells. Kept in sync with
+// TEAM_COLORS[Team.None] (src/shared/palette.ts) — both must agree so
+// a cell rendered via the fallback path looks identical to one rendered
+// via paletteByIndex[PALETTE_NONE].
+const NONE_MAT = cellMaterialFromColor(TEAM_COLORS[Team.None])
 
 function cellMaterialForIndex(index: number) {
 	const color = paletteByIndex.get(index)
