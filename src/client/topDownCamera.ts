@@ -224,11 +224,12 @@ export function applyPanDelta(dxPx: number, dyPx: number): void {
 	mode = Mode.FREE
 
 	// Screen axes after the camera's -Z offset rotation: +Z is up, +X is right.
-	// Camera follows finger: drag down (+dy) → camera moves -Z (down on screen);
-	// drag right (+dx) → camera moves +X (right on screen).
+	// Mobile: camera-follows-finger (push the world) — drag right → camera +X.
+	// Desktop: grab-and-pull (Google-Maps convention) — drag right → camera -X.
 	const mPerPx = DRAG_M_PER_PX_BASE * (currentAltitude / 30)
-	targetPos.x +=  dxPx * mPerPx
-	targetPos.z += -dyPx * mPerPx
+	const sign   = isMobile() ? 1 : -1
+	targetPos.x +=  sign * dxPx * mPerPx
+	targetPos.z += -sign * dyPx * mPerPx
 }
 
 
