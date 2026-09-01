@@ -165,11 +165,11 @@ function Dpad() {
 	// screen-top=+X derivation was wrong (likely because the small east
 	// offset produces screen-top=-X in practice). Signs flipped from the
 	// original guess:
-	// Screen axes: +X is up, +Z is right.
-	//   up    → (vx=+1, vz= 0)
-	//   right → (vx= 0, vz=+1)
-	//   down  → (vx=-1, vz= 0)
-	//   left  → (vx= 0, vz=-1)
+	// Screen axes after the camera's -Z offset rotation: +Z is up, +X is right.
+	//   up    → (vx= 0, vz=+1)
+	//   right → (vx=+1, vz= 0)
+	//   down  → (vx= 0, vz=-1)
+	//   left  → (vx=-1, vz= 0)
 	const empty = (id: string) => (
 		<UiEntity key={id} uiTransform={{ width: DPAD_BTN, height: DPAD_BTN }} />
 	)
@@ -186,23 +186,23 @@ function Dpad() {
 			<UiEntity uiTransform={{ flexDirection: 'row' }}>
 				{empty('nw')}
 				<UiEntity uiTransform={{ margin: { left: DPAD_GAP, right: DPAD_GAP } }}>
-					<DpadButton dir={{ vx: +1, vz:  0 }} rotationDeg={0}   keyId="dpad_up" />
+					<DpadButton dir={{ vx: 0, vz: +1 }} rotationDeg={0}   keyId="dpad_up" />
 				</UiEntity>
 				{empty('ne')}
 			</UiEntity>
 			{/* row 2 */}
 			<UiEntity uiTransform={{ flexDirection: 'row', margin: { top: DPAD_GAP } }}>
-				<DpadButton dir={{ vx: 0, vz: -1 }} rotationDeg={270} keyId="dpad_left" />
+				<DpadButton dir={{ vx: -1, vz: 0 }} rotationDeg={270} keyId="dpad_left" />
 				<UiEntity uiTransform={{ margin: { left: DPAD_GAP, right: DPAD_GAP } }}>
 					{empty('center')}
 				</UiEntity>
-				<DpadButton dir={{ vx: 0, vz: +1 }} rotationDeg={90}  keyId="dpad_right" />
+				<DpadButton dir={{ vx: +1, vz: 0 }} rotationDeg={90}  keyId="dpad_right" />
 			</UiEntity>
 			{/* row 3 */}
 			<UiEntity uiTransform={{ flexDirection: 'row', margin: { top: DPAD_GAP } }}>
 				{empty('sw')}
 				<UiEntity uiTransform={{ margin: { left: DPAD_GAP, right: DPAD_GAP } }}>
-					<DpadButton dir={{ vx: -1, vz: 0 }} rotationDeg={180} keyId="dpad_down" />
+					<DpadButton dir={{ vx: 0, vz: -1 }} rotationDeg={180} keyId="dpad_down" />
 				</UiEntity>
 				{empty('se')}
 			</UiEntity>

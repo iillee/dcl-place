@@ -40,6 +40,7 @@ import { initPlayerNet } from 'src/client/player'
 import { runStress } from 'src/client/stress'
 import { setupUi } from 'src/client/ui'
 import { setupTopDownCamera } from 'src/client/topDownCamera'
+import { setupTouchControls } from 'src/client/touchControls'
 import { dragPollSystem } from 'src/client/ui/layers/layer.topDownPan'
 import { initHelpPanelHotkey } from 'src/client/ui/layers/layer.helpPanel'
 import { initLeaderboardHotkey } from 'src/client/ui/layers/layer.leaderboard'
@@ -121,6 +122,10 @@ export async function setupClient(): Promise<void> {
 
 	// Desktop hotkey: `4` toggles the leaderboard panel.
 	initLeaderboardHotkey()
+
+	// Reshape the mobile on-screen button cluster (no-op on desktop):
+	// eye = spectator, E = mute, F = leaderboard, + = help.
+	setupTouchControls()
 
 	// Wire event subscribers + CRDT paint observers. PaintCoverage /
 	// PaletteEntry / PaintCell / LeaderboardState are server-owned

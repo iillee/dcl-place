@@ -197,6 +197,10 @@ class TopBarLayer extends Layer {
 	}
 
 	body() {
+		// On mobile, all four actions live on the native on-screen HUD
+		// (see src/client/touchControls.ts) so the top bar is hidden.
+		if (isMobile()) return <UiEntity />
+
 		const specActive = (this.props?.get('specActive') as boolean) ?? false
 		const musicMuted = (this.props?.get('musicMuted') as boolean) ?? false
 		const helpOpen   = (this.props?.get('helpOpen')   as boolean) ?? false

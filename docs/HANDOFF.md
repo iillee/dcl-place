@@ -4,8 +4,8 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main`
-**Last committed session:** 6035060 — "feat(snapshot): Discord webhook archive pipeline + first World deploy"
-**This session:** UX polish pass — spectator camera rotated 90° CCW (+X up, +Z right on screen) for both drag and d-pad, player spawn corrected to true scene center (160,160), snapshot ⬇ button removed from top bar, cold-open loading splash added (thumbnail overlay until first tile cascade drains), E hotkey now cycles palette LEFT (was right), help panel copy rewritten ("welcome to dclplace / a public drawing board").
+**Last committed session:** ec1ce31 — "polish(help): tighten panel, gold title accent, indent rules, typo fix"
+**This session:** Mobile HUD overhaul — native on-screen buttons repurposed (E=mute, F=leaderboard, slot3=spectator, slot4=help), top bar hidden on mobile, spectator d-pad + drag re-aligned to the rotated camera (+Z up, +X right), help panel scaled 2× and vertically centered on mobile, leaderboard trimmed to top 10, "click" ready hint on the mobile paint button when cooldown drains, star icon generated for leaderboard slot.
 **Deadline:** September 7, 2026
 **Live World:** `dclplace.dcl.eth` — https://decentraland.org/play/?realm=dclplace.dcl.eth
 
@@ -51,7 +51,35 @@ Active state = warm gold accent. Leaderboard and Help slide down from the top-ce
 
 ---
 
-## 🆕 Latest session — UX polish
+## 🆕 Latest session — Mobile HUD overhaul
+
+### Native mobile on-screen buttons (`src/client/touchControls.ts` — new)
+Reshapes DCL's fixed native button cluster via `TouchScreenControls`. Requires SDK 7.26.0+. No-op on desktop.
+- **Priority stack** (fixed): `JUMP > POINTER > PRIMARY (E) > SECONDARY (F) > ACTION_3 > ACTION_4 > ACTION_5 > ACTION_6`. With ≤5 visible = no "+" overflow. We hide `IA_POINTER`, `IA_ACTION_5`, `IA_ACTION_6` → 5 visible: JUMP in center + 4 around it.
+- **Mapping:** E → mute (icon tracks state, re-applied after each toggle); F → leaderboard (★ icon); slot 3 → spectator (eye icon, dispatch owned by `topDownCamera.ts` — don't double-handle); slot 4 → help ("?" icon).
+- **The IA_POINTER trap:** binding a global action to `IA_POINTER` back-fires because ANY mobile UI tap (d-pad, zoom, swatches, paint) fires `IA_POINTER`. Learned by wiring spectator to it and having every UI interaction toggle the camera. Solution: hide the hand entirely, use `IA_ACTION_3` for spectator.
+- **Star icon** (`assets/images/star3.png`) generated via PowerShell + `System.Drawing` (Segoe UI Symbol, 380pt, y=245). No stock trophy PNG existed in adjacent scenes. Renamed twice during dev (`leaderboard.png` → `star.png` → `star2.png` → `star3.png`) to bust the mobile texture cache — same-path replacement silently serves stale.
+- **Top bar hidden on mobile** (`layer.topBar.tsx`): `if (isMobile()) return <UiEntity />`. Desktop bar unchanged.
+
+### Spectator camera + input re-alignment (again)
+Previous session rotated camera offset from `+X` to `-Z`; this changes what world axis is "up on screen" to **+Z up, +X right** (not +X up as originally computed). Realigned both input surfaces:
+- **Drag** (`applyPanDelta`): `targetPos.x += dxPx * m; targetPos.z += -dyPx * m` (camera follows finger).
+- **D-pad** (`layer.topDownPan.tsx`): up = `(0, +1)`, right = `(+1, 0)`, down = `(0, -1)`, left = `(-1, 0)`.
+
+### Help panel mobile scaling
+- Scale factor `s = 2` on mobile applied to width, padding, all child heights, all font sizes, and all margins (desktop `s = 1`).
+- Mobile height explicitly tightened to 320 (raw `PANEL_H×2 = 400` left empty space).
+- Vertically centered via `top = (720 - height) / 2` on mobile (top bar hidden so no offset needed).
+
+### Leaderboard trim
+- `MAX_ROWS: 12 → 10`; header "TOP PAINTERS" → "TOP 10 PAINTERS". Panel height auto-shrinks via the `HEADER_H + MAX_ROWS * ROW_H` formula. Server still tracks top 20.
+
+### Mobile paint-button "click" ready hint
+- When `ready === true` (cooldown fully drained) AND `isMobile()`, an absolutely-positioned centered `<b>click</b>` label overlays the paint button. Flips to black when the white swatch is selected (same contrast rule as the desktop `F` glyph). Nudged 6px up for optical center.
+
+---
+
+## Previous session — UX polish
 
 ### Spectator camera rotation (90° CCW)
 Screen axes were inconsistent with world axes. Rotated the overhead view so **+X is up on screen, +Z is right**. Three touch-points:

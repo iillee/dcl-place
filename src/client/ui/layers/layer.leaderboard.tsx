@@ -33,7 +33,7 @@ const DIM   = Color4.create(1, 1, 1, 0.55)
 
 const PANEL_W    = 360
 const ROW_H      = 26
-const MAX_ROWS   = 12
+const MAX_ROWS   = 10
 const HEADER_H   = 44
 const V_PAD      = 12
 const PANEL_H    = HEADER_H + MAX_ROWS * ROW_H + V_PAD * 2 + 8
@@ -105,7 +105,7 @@ class LeaderboardLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: HEADER_H, margin: { bottom: 8 } }}
 					uiText = {{
-						value    : '<b>TOP PAINTERS</b>',
+						value    : '<b>TOP 10 PAINTERS</b>',
 						fontSize : 22,
 						color    : GOLD,
 						textAlign: 'middle-center',

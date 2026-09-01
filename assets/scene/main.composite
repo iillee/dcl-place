@@ -434,18 +434,13 @@
           "json": {
             "name": "dclplace",
             "description": "The eternal collaborative pixel canvas of Decentraland. Place one pixel every second",
-            "thumbnail": "assets/Images/dclplace.png",
+            "thumbnail": "assets/images/dclplace.png",
             "ageRating": "A",
             "categories": [],
             "author": "dcl-place",
-            "tags": [
-              ""
-            ],
+            "email": "",
+            "tags": [],
             "layout": {
-              "base": {
-                "x": 0,
-                "y": 0
-              },
               "parcels": [
                 {
                   "x": 0,
@@ -2047,8 +2042,14 @@
                   "x": 19,
                   "y": 19
                 }
-              ]
+              ],
+              "base": {
+                "x": 0,
+                "y": 0
+              }
             },
+            "silenceVoiceChat": false,
+            "disablePortableExperiences": false,
             "spawnPoints": [
               {
                 "name": "CenterSpawn",
@@ -2057,19 +2058,22 @@
                   "x": {
                     "$case": "range",
                     "value": [
-                      174,
-                      178
+                      158,
+                      162
                     ]
                   },
                   "y": {
-                    "$case": "single",
-                    "value": 1
+                    "$case": "range",
+                    "value": [
+                      1,
+                      1
+                    ]
                   },
                   "z": {
                     "$case": "range",
                     "value": [
-                      174,
-                      178
+                      158,
+                      162
                     ]
                   }
                 },
@@ -2080,7 +2084,10 @@
                 }
               }
             ],
-            "skyboxConfig": {}
+            "skyboxConfig": {},
+            "creator": "",
+            "disableNearbyVoiceChat": false,
+            "hideLandscapeTerrain": false
           }
         }
       }

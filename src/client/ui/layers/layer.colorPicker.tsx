@@ -262,6 +262,29 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 					}}
 				/>
 			)}
+
+			{/* Mobile ready hint — shows "click" only when the cooldown has
+			   fully drained and the button is ready to paint. Flips to black
+			   on white so it stays readable. */}
+			{isMobile() && ready && (
+				<UiEntity
+					key         = "ui_PaintBtn_readyHint"
+					uiTransform = {{
+						positionType  : 'absolute',
+						position      : { left: 0, top: -6 },
+						width         : '100%',
+						height        : '100%',
+						justifyContent: 'center',
+						alignItems    : 'center',
+					}}
+					uiText = {{
+						value    : '<b>click</b>',
+						fontSize : 28,
+						color    : selectedPaletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						textAlign: 'middle-center',
+					}}
+				/>
+			)}
 		</UiEntity>
 	)
 }

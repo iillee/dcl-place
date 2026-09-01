@@ -92,7 +92,8 @@ export function setupTopDownCamera(): void {
 		defaultTransition: { transitionMode: VirtualCamera.Transition.Speed(TRANSITION_SPEED) },
 	})
 
-	// Hotkey: 1 (IA_ACTION_3) toggles spectator.
+	// Hotkey: 1 (IA_ACTION_3) toggles spectator. Also used by the mobile
+	// eye button (see touchControls.ts).
 	engine.addSystem((dt: number) => {
 		if (inputSystem.isTriggered(InputAction.IA_ACTION_3, PointerEventType.PET_DOWN)) {
 			playUiClick()
@@ -222,12 +223,12 @@ export function applyPanDelta(dxPx: number, dyPx: number): void {
 
 	mode = Mode.FREE
 
-	// Screen axes: +X is up, +Z is right.
-	// Camera follows finger: drag down (+dy) → camera moves -X (down on screen);
-	// drag right (+dx) → camera moves +Z (right on screen).
+	// Screen axes after the camera's -Z offset rotation: +Z is up, +X is right.
+	// Camera follows finger: drag down (+dy) → camera moves -Z (down on screen);
+	// drag right (+dx) → camera moves +X (right on screen).
 	const mPerPx = DRAG_M_PER_PX_BASE * (currentAltitude / 30)
-	targetPos.x += -dyPx * mPerPx
-	targetPos.z +=  dxPx * mPerPx
+	targetPos.x +=  dxPx * mPerPx
+	targetPos.z += -dyPx * mPerPx
 }
 
 

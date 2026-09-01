@@ -49,16 +49,25 @@ class HelpPanelLayer extends Layer {
 
 	body() {
 		const mobile = isMobile()
-		const barTop = mobile ? BAR_TOP_MB : BAR_TOP_DT
-		const top    = barTop + BTN_SIZE + GAP_BELOW_BAR_PX
+		// Mobile: 2× the panel + content, and vertically centered on the
+		// 1600×720 virtual screen (top bar is hidden on mobile so we don't
+		// have to sit below it). Desktop unchanged.
+		const s        = mobile ? 2 : 1
+		const width    = PANEL_W * s
+		// Mobile height tightened (content fits in ~320px at 2× scale;
+		// PANEL_H×2 = 400 left extra padding at the bottom).
+		const height   = mobile ? 320 : PANEL_H
+		const top      = mobile
+			? Math.max(0, (720 - height) / 2)
+			: BAR_TOP_DT + BTN_SIZE + GAP_BELOW_BAR_PX
 		return (
 			<UiEntity
 				key         = "ui_HelpPanel_root"
 				uiTransform = {{
-					width         : PANEL_W,
-					height        : PANEL_H,
+					width         : width,
+					height        : height,
 					margin        : { top },
-					padding       : spacing.lg,
+					padding       : spacing.lg * s,
 					borderRadius  : borderRadius.md,
 					borderWidth   : 4,
 					borderColor   : Color4.create(1, 1, 1, 0.75),
@@ -70,10 +79,10 @@ class HelpPanelLayer extends Layer {
 			>
 				{/* Title */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 32, margin: { bottom: 8 } }}
+					uiTransform = {{ width: '100%', height: 32 * s, margin: { bottom: 8 * s } }}
 					uiText = {{
 						value    : '<b>welcome to <color=#ffcc4d>dclplace</color>!</b>',
-						fontSize : 24,
+						fontSize : 24 * s,
 						color    : WHITE,
 						textAlign: 'middle-center',
 					}}
@@ -81,28 +90,28 @@ class HelpPanelLayer extends Layer {
 
 				{/* Rules — three concise lines */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4, left: 16 } }}
+					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: 4 * s, left: 16 * s } }}
 					uiText = {{
 						value    : '<b><color=#ffcc4d>1.</color></b>  select a color from the pallete',
-						fontSize : 18,
+						fontSize : 18 * s,
 						color    : WHITE,
 						textAlign: 'middle-left',
 					}}
 				/>
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4, left: 16 } }}
+					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: 4 * s, left: 16 * s } }}
 					uiText = {{
 						value    : '<b><color=#ffcc4d>2.</color></b>  place 1 pixel every 1 second',
-						fontSize : 18,
+						fontSize : 18 * s,
 						color    : WHITE,
 						textAlign: 'middle-left',
 					}}
 				/>
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12, left: 16 } }}
+					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: 12 * s, left: 16 * s } }}
 					uiText = {{
 						value    : '<b><color=#ffcc4d>3.</color></b>  make art',
-						fontSize : 18,
+						fontSize : 18 * s,
 						color    : WHITE,
 						textAlign: 'middle-left',
 					}}
