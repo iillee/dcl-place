@@ -15,6 +15,7 @@
  */
 
 import { AudioSource, Entity, InputAction, PointerEventType, Transform, engine, inputSystem } from '@dcl/sdk/ecs'
+import { isMobile } from '@dcl/sdk/platform'
 
 const MUSIC_VOLUME = 0.4
 const MUSIC_SRC = 'assets/sounds/HomeAgain_Loop.mp3'
@@ -47,11 +48,17 @@ export function initAudio(): void {
   // Desktop hotkey: `2` (IA_ACTION_4) toggles music mute. Matches the
   // top-bar left-to-right key order: 1 spectator, 2 mute, 3 leaderboard,
   // 4 help. toggleMusic() already plays the UI click.
-  engine.addSystem(() => {
-    if (inputSystem.isTriggered(InputAction.IA_ACTION_4, PointerEventType.PET_DOWN)) {
-      toggleMusic()
-    }
-  })
+  //
+  // Desktop-only guard: on mobile the native on-screen `?` button is
+  // remapped to IA_ACTION_4 (see touchControls.ts) which routes to help;
+  // without this guard, tapping `?` also toggles mute.
+  if (!isMobile()) {
+    engine.addSystem(() => {
+      if (inputSystem.isTriggered(InputAction.IA_ACTION_4, PointerEventType.PET_DOWN)) {
+        toggleMusic()
+      }
+    })
+  }
 }
 
 export function isMusicMuted(): boolean {
