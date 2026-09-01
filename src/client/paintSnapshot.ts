@@ -1,14 +1,14 @@
 /**
- * paintSnapshot.ts \u2014 build a "clean" pixel snapshot of the current paint
- * state directly from the CRDT (no camera / screenshot involved).
+ * paintSnapshot.ts — build a PNG snapshot of the current canvas state
+ * directly from the CRDT (no camera / screenshot involved) and hand it
+ * to the player's browser via openExternalUrl().
  *
- * Two outputs:
- *   1. buildSnapshotPixels() \u2014 a Color4 grid the overlay UI renders as a
- *      colored-cell mosaic.
- *   2. snapshotDataUrl() \u2014 the same grid, upscaled and encoded as an
- *      uncompressed PNG in a `data:image/png;base64,...` URL. Pass this to
- *      openExternalUrl() so the player's browser opens it and they can
- *      right-click / long-press to save.
+ * dcl/place is square (20×20 tiles × 16 cells = 320×320 pixels), so
+ * unlike the canvas project we don't rotate — image y=0 is NORTH
+ * (world +Z max), image x=0 is WEST (world +X = 0). Matches the
+ * top-down spectator camera view.
+ *
+ * Ported from dcl-canvas/src/client/paintSnapshot.ts.
  */
 
 import { engine, NetworkEntity } from '@dcl/sdk/ecs'
@@ -25,23 +25,20 @@ import { bytesToBase64, encodePngRgb } from 'src/shared/utils/pngEncoder'
 
 
 // MARK: constants
+const WORLD_W_CELLS = MAZE_GRID_WIDTH  * PAINT_CELLS_PER_TILE_AXIS  // 320
+const WORLD_H_CELLS = MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE_AXIS  // 320
 
-// The walkable grid is 4 tiles wide (X, west→east) x 7 tiles tall
-// (Z, south→north). The exported / previewed image is rotated 90° clockwise
-// so it reads LANDSCAPE and matches what the spectator top-down camera
-// shows (world +X at screen top, world +Z at screen right).
-const WORLD_W_CELLS = MAZE_GRID_WIDTH  * PAINT_CELLS_PER_TILE_AXIS  // 64
-const WORLD_H_CELLS = MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE_AXIS  // 112
+export const SNAPSHOT_WIDTH_CELLS  = WORLD_W_CELLS
+export const SNAPSHOT_HEIGHT_CELLS = WORLD_H_CELLS
 
-/** Snapshot image dimensions in cells (after 90° rotation — landscape). */
-export const SNAPSHOT_WIDTH_CELLS  = WORLD_H_CELLS
-export const SNAPSHOT_HEIGHT_CELLS = WORLD_W_CELLS
+/** Background color for unpainted cells (matches TEAM_COLORS[None] = #EAEAEA). */
+const BG_COLOR: Color4 = Color4.create(0xEA / 255, 0xEA / 255, 0xEA / 255, 1)
 
-/** Background for unpainted / non-walkable cells in the exported image. */
-const BG_COLOR: Color4 = Color4.create(1, 1, 1, 1)
-
-/** How many PNG pixels per paint cell in the downloadable image. */
-const PNG_PIXELS_PER_CELL = 4
+/**
+ * PNG pixels per paint cell. 2× → 640×640 PNG (~1.2MB uncompressed RGB
+ * before deflate). Bump to 3–4 if we want a chunkier readable image.
+ */
+const PNG_PIXELS_PER_CELL = 2
 
 
 // MARK: readPalette
@@ -56,19 +53,17 @@ function readPalette(): Map<number, Color4> {
 
 // MARK: buildSnapshotPixels
 /**
- * Read every PaintCell CRDT component, map the packed cell key back to
- * (tileX, tileZ, col, row), and stamp its palette color into a global
- * Color4 grid sized SNAPSHOT_WIDTH_CELLS x SNAPSHOT_HEIGHT_CELLS.
+ * Read every PaintCell CRDT component, resolve its (worldX, worldZ),
+ * and stamp its palette color into a Color4 grid sized
+ * SNAPSHOT_HEIGHT_CELLS × SNAPSHOT_WIDTH_CELLS.
  *
- * Unpainted / never-touched cells default to BG_COLOR.
+ * North-up orientation:
+ *   image.x = worldX               (west→east)
+ *   image.y = WORLD_H_CELLS - 1 - worldZ   (north→south)
  */
 export function buildSnapshotPixels(): Color4[][] {
 	const palette = readPalette()
 
-	// Row-major: pixels[y][x], sized SNAPSHOT_HEIGHT_CELLS x SNAPSHOT_WIDTH_CELLS.
-	// Rotation mapping (90° CW from world to image):
-	//   image.x = world.z   (Z goes left→right on the image)
-	//   image.y = WORLD_W_CELLS - 1 - world.x   (X goes bottom→top on the image)
 	const pixels: Color4[][] = new Array(SNAPSHOT_HEIGHT_CELLS)
 	for (let y = 0; y < SNAPSHOT_HEIGHT_CELLS; y++) {
 		const row = new Array<Color4>(SNAPSHOT_WIDTH_CELLS)
@@ -87,8 +82,8 @@ export function buildSnapshotPixels(): Color4[][] {
 		const worldZ = tz * PAINT_CELLS_PER_TILE_AXIS + row
 		if (worldX < 0 || worldX >= WORLD_W_CELLS) continue
 		if (worldZ < 0 || worldZ >= WORLD_H_CELLS) continue
-		const imgX = worldZ
-		const imgY = (WORLD_W_CELLS - 1) - worldX
+		const imgX = worldX
+		const imgY = (WORLD_H_CELLS - 1) - worldZ
 		const color = palette.get(cell.index)
 		if (!color) continue
 		pixels[imgY][imgX] = color
@@ -102,11 +97,7 @@ export function buildSnapshotPixels(): Color4[][] {
 // MARK: snapshotDataUrl
 /**
  * Encode the current paint state as a PNG data URL. Each paint cell is
- * upscaled to PNG_PIXELS_PER_CELL square pixels so the resulting image
- * is easier to view / save at a usable size.
- *
- * Rows are flipped so the exported image is north-up (matches the
- * top-down spectator camera view).
+ * upscaled to PNG_PIXELS_PER_CELL square pixels.
  */
 export function snapshotDataUrl(): string {
 	const cells   = buildSnapshotPixels()
@@ -122,7 +113,6 @@ export function snapshotDataUrl(): string {
 			const r = Math.max(0, Math.min(255, Math.round(c.r * 255)))
 			const g = Math.max(0, Math.min(255, Math.round(c.g * 255)))
 			const b = Math.max(0, Math.min(255, Math.round(c.b * 255)))
-			// Fill scale x scale block in the output image.
 			for (let dy = 0; dy < scale; dy++) {
 				const py = cy * scale + dy
 				let off = (py * wPixels + cx * scale) * 3

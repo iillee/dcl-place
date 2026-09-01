@@ -52,6 +52,11 @@ let coverageDirty = false
 
 // Canvas dirty flag — tripped by any accepted paint, cleared after Storage flush.
 let canvasDirty = false
+// Separate dirty flag consumed by the Discord snapshot poster. Set by the
+// same code paths that mark canvasDirty, but cleared independently after
+// each Discord post (canvasStorage.saveCanvas clears canvasDirty on its
+// own 30s schedule and would otherwise steal the signal).
+let snapshotDirty = false
 
 
 // MARK: seedTeamPalette
@@ -107,6 +112,7 @@ export function applyPaintIndex(id: string, paletteIndex: number): boolean {
 	cellIndex.set(id, paletteIndex)
 	coverageDirty = true
 	canvasDirty   = true
+	snapshotDirty = true
 	return true
 }
 
@@ -140,7 +146,14 @@ export function* allPaintedCells(): IterableIterator<[string, number]> {
 
 export function isCanvasDirty(): boolean { return canvasDirty }
 export function markCanvasClean(): void { canvasDirty = false }
+export function isSnapshotDirty(): boolean { return snapshotDirty }
+export function markSnapshotClean(): void { snapshotDirty = false }
 export function paintedCellCount(): number { return cellIndex.size }
+
+/** Palette color lookup (index → Color4). Undefined if slot unused. */
+export function paletteColorAt(index: number): Color4 | undefined {
+	return indexToColor[index]
+}
 
 
 // MARK: internColor

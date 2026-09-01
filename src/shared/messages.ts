@@ -96,6 +96,11 @@ export const Messages = {
 		nextAllowedAt: Schemas.Int64,
 		serverNow:     Schemas.Int64,
 	}),
+
+	// Client → Server: request an on-demand Discord snapshot post of the
+	// current canvas. Server rate-limits per-sender to prevent webhook spam;
+	// no ack is sent (fire-and-forget).
+	requestSnapshotPost: Schemas.Map({}),
 }
 
 export const room = registerMessages(Messages)

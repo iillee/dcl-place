@@ -16,11 +16,11 @@ import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { Color4 } from '@dcl/sdk/math'
 import { isMobile } from '@dcl/sdk/platform'
-
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
 
 import { isMusicMuted, playUiClick, toggleMusic } from 'src/client/audio'
 import { isTopDownActive, toggleTopDownCamera }   from 'src/client/topDownCamera'
+import { room } from 'src/shared/messages'
 import {
 	helpPanelLayer,
 	isHelpPanelVisible,
@@ -135,6 +135,42 @@ function MuteIcon(props: { muted: boolean }) {
 }
 
 
+// MARK: DownloadGlyph — ⬇ for the snapshot button.
+function DownloadGlyph(props: { color: Color4 }) {
+	return (
+		<UiEntity
+			uiTransform = {{
+				width: 50, height: 50,
+				justifyContent: 'center', alignItems: 'center',
+			}}
+			uiText = {{
+				value    : '⬇',
+				fontSize : 44,
+				color    : props.color,
+				textAlign: 'middle-center',
+			}}
+		/>
+	)
+}
+
+
+// MARK: onSnapshotClick
+/**
+ * Ask the server to post the current canvas to the Discord snapshot
+ * channel. Server encodes + uploads (client can't openExternalUrl a
+ * data URL, and each client encoding its own copy would waste bandwidth
+ * anyway). Server rate-limits per-sender to prevent spam. Fire-and-
+ * forget — no ack, just the click sfx as feedback.
+ */
+function onSnapshotClick(): void {
+	try {
+		room.send('requestSnapshotPost', {})
+	} catch (err) {
+		console.log('[TopBar] requestSnapshotPost failed', err)
+	}
+}
+
+
 // MARK: TrophyGlyph — ★ for the leaderboard button.
 function TrophyGlyph(props: { color: Color4 }) {
 	return (
@@ -232,6 +268,14 @@ class TopBarLayer extends Layer {
 					onPress   = {() => { playUiClick(); toggleLeaderboard() }}
 				>
 					<TrophyGlyph color={lbOpen ? GOLD : WHITE} />
+				</PanelButton>
+
+				<PanelButton
+					keyId     = "ui_TopBar_snap"
+					padBottom = {isMobile() ? 28 : 0}
+					onPress   = {() => { playUiClick(); onSnapshotClick() }}
+				>
+					<DownloadGlyph color={WHITE} />
 				</PanelButton>
 
 				<PanelButton

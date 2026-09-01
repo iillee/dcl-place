@@ -31,8 +31,11 @@ const CENTER_Z = SCENE_WORLD_SIZE_Z_METERS / 2
 
 // dcl/place is 160m × 160m — 5× bigger than snowdrift, so default altitudes
 // are higher to keep the whole canvas readable on first entry.
-const CAM_ALTITUDE_DESKTOP_DEFAULT = 90
-const CAM_ALTITUDE_MOBILE_DEFAULT  = 70
+// Defaults sit 4 zoom-steps (40 m) closer than the wide-canvas readable
+// altitude so players start with a pixel-scale view; wheel/pinch out to
+// see the whole board.
+const CAM_ALTITUDE_DESKTOP_DEFAULT = 50
+const CAM_ALTITUDE_MOBILE_DEFAULT  = 30
 const CAM_ALTITUDE_DEFAULT         = isMobile() ? CAM_ALTITUDE_MOBILE_DEFAULT : CAM_ALTITUDE_DESKTOP_DEFAULT
 const CAM_ALTITUDE_MIN             = 20
 const CAM_ALTITUDE_MAX             = 140

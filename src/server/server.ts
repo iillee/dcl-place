@@ -55,6 +55,7 @@ import {
 } from 'src/server/paintState'
 import { loadCanvas, saveCanvas } from 'src/server/canvasStorage'
 import { initServerStats, startServerStatsTick } from 'src/server/serverStats'
+import { initSnapshotDiscord, postSnapshotNow, snapshotAutoTick } from 'src/server/snapshotDiscord'
 
 const HEARTBEAT_INTERVAL_S = 5
 const PAINT_SUMMARY_INTERVAL_S = 5
@@ -89,6 +90,7 @@ export async function setupServer(): Promise<void> {
 
 	bindNameResolver(leaderboardGetName)
 	await initDiscord()
+	await initSnapshotDiscord()
 
 	// PaintTick summary accumulators
 	let placeAttempts     = 0
@@ -159,6 +161,12 @@ export async function setupServer(): Promise<void> {
 		leaderboardIncrement(from, 1)
 		placeApplied++
 		room.send('cooldownAck', { accepted: true, nextAllowedAt: nextAt, serverNow: now }, { to: [from] })
+	})
+
+	room.onMessage('requestSnapshotPost', (_data, context) => {
+		const from = context?.from
+		if (!from) return
+		postSnapshotNow(from)
 	})
 
 	room.onMessage('updateName', ({ name }, context) => {
@@ -261,6 +269,7 @@ export async function setupServer(): Promise<void> {
 		if (discordFlushClock < 1) return
 		discordFlushClock = 0
 		flushPendingJoins()
+		snapshotAutoTick()  // cheap when nothing to do; posts every 5min if dirty
 	})
 
 	console.log(

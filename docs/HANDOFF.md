@@ -4,9 +4,10 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main`
-**Last committed session:** bc9b1ca — "feat(ui): E glyph on selected swatch, top-bar hotkeys 1-4, pop-on-paint"
-**This session:** UI polish pass — hotkey glyphs, top-bar layout, paint-button on mobile, preview pop-up animation, audio timing
+**Last committed session:** aebf2a4 — "feat(ui,fx): mobile paint fix, preview pop-up anim, palette match, sfx timing"
+**This session:** Day 6 landed — Discord snapshot pipeline (server-side PNG encode + webhook upload, auto every 5min if dirty + on-demand ⬇ button), World deploy to `dclplace.dcl.eth`, closer default spectator zoom, case-sensitivity fixes for deploy.
 **Deadline:** September 7, 2026
+**Live World:** `dclplace.dcl.eth` — https://decentraland.org/play/?realm=dclplace.dcl.eth
 
 ---
 
@@ -50,7 +51,35 @@ Active state = warm gold accent. Leaderboard and Help slide down from the top-ce
 
 ---
 
-## 🆕 This session's work (all in the two commits below `main`)
+## 🆕 Latest session — Day 6 snapshot pipeline + first World deploy
+
+### Discord snapshot pipeline (Day 6 ✅)
+The canvas now backs itself up to a Discord channel automatically — the channel *is* the timelapse archive.
+
+- **`src/server/snapshotDiscord.ts`** (new) — server-side PNG encoder + Discord webhook uploader.
+  - Reads `paintState.cellIndex` directly (no CRDT round-trip), stamps into an RGB grid, 2× upscale → 640×640 PNG via the shared `pngEncoder`.
+  - Multipart body assembled as `Uint8Array` — `TextEncoder` doesn't exist in the sandboxed server runtime, so `asciiBytes()` helper does ASCII-only encoding (captions kept ASCII on purpose).
+  - Discord attachment CDN URLs are signed + expire in ~24h since late 2023 — that's fine for archive scraping (Discord API re-signs on `GET /messages`) but rules out using one URL as a long-lived in-world texture. Deferred for the in-world display board.
+- **Auto-post every 5 min** if `snapshotDirty` — new flag in `paintState.ts` alongside `canvasDirty` (independent lifecycle: snapshot poster clears its own flag; canvas Storage flush clears the other). Idle canvas → zero posts.
+- **Global 30s floor** + **per-user 60s floor** on manual posts prevent spam / rate-limit hits.
+- **On-demand ⬇ button** in the top-bar → new `requestSnapshotPost` room message → server posts with `on-demand snapshot (by 0x…)` caption. Fire-and-forget, no ack; click sfx is the only feedback.
+- Client's `src/client/paintSnapshot.ts` is now unused / dead code — was originally going to `openExternalUrl(dataUrl)` but DCL's sandbox strips `data:` URIs and redirects to the whitepaper. Kept the file in case we want per-client encode later.
+- Webhook URL loaded from **`DISCORD_SNAPSHOT_WEBHOOK`** EnvVar. Unset = silently disabled (safe for local preview). Set via `npx sdk-commands storage env set DISCORD_SNAPSHOT_WEBHOOK --value "..."` — must be run **after** first deploy (Storage provisions per-World).
+
+### First World deploy — `dclplace.dcl.eth`
+- Added `worldConfiguration.name` to `scene.json`.
+- Two case-sensitivity bugs hit deploy validation (Windows is case-insensitive, deploy server isn't): `assets/Images/dclplace.png` → `assets/images/dclplace.png` in both `scene.json` (`navmapThumbnail`) and `assets/scene/main.composite` (`thumbnail`).
+- **First-deploy CDN warmup gotcha:** tile GLBs failed to load on first deploy (visible paint cells but no floor/collider). Reloading the World resolved it — CDN cache filled on second fetch. Design smell worth flagging: we're still using the canvas project's maze generator to place 400 tiles on a solid 20×20 grid; that's fragile. Future refactor: drop the maze machinery, spawn a plain grid of `tile-cross-full.glb` directly.
+
+### Camera / mobile polish
+- **Default spectator altitude** dropped 4 zoom-steps (40 m) closer so players open the top-down cam at pixel-scale, not whole-canvas: desktop `90 → 50`, mobile `70 → 30`. Both still above `CAM_ALTITUDE_MIN` (20).
+
+### `.env` for local preview
+- Added `.env` (gitignored already) with `DISCORD_SNAPSHOT_WEBHOOK` for local server. Same read path as the deployed server — `EnvVar.get(...)` transparently sources from either.
+
+---
+
+## 🆕 Previous session
 
 ### Commit 1 — `fix(palette): light-grey unpainted tiles + palette-seed collision`
 The important fix. Traced the bug where painting white rendered as black on clients:
@@ -129,7 +158,7 @@ The UX iteration:
 
 ## ⚠️ Known gaps
 
-- **No snapshot / JPG export yet** — Day 6 still open.
+
 - **Yellow palette color + white F glyph** = low contrast. Only white is special-cased to flip the F to black; yellow will look faint. Fix (if bothersome): compute perceived luminance from fill color and pick black/white automatically.
 - **Legacy compat shims** (`team.ts`, `roundTiming.ts`, `Team.Red/Blue`) still present but inert. `TEAM_COLORS[Red]/[Blue]` alias `PLACE_PALETTE[0]/[1]` (blue/red — yes, backwards) — harmless since teams are unused.
 - **`initPaintingSystem` is a no-op** — legacy walk-to-paint disabled.
@@ -153,10 +182,11 @@ src/shared/
   components.ts          PaintCell, PaletteEntry, PaintCoverage, LeaderboardState
   maze/                  tile/level generation
 src/server/
-  server.ts              handlers + cooldown map + 30s canvas flush + 1s leaderboard tick
-  paintState.ts          applyPaintIndex, hydratePaintCell, allPaintedCells
+  server.ts              handlers + cooldown map + 30s canvas flush + 1s leaderboard tick + snapshot auto-tick
+  paintState.ts          applyPaintIndex, hydratePaintCell, allPaintedCells, snapshotDirty
   canvasStorage.ts       Storage.get/set for the eternal canvas
   leaderboard.ts         top-100 all-time + dirty flag + markLeaderboardDirty()
+  snapshotDiscord.ts     server-side PNG encode + Discord webhook multipart upload
 src/client/
   index.ts               boot orchestration + hotkey wiring
   clientHandler.ts       joinRoster, updateName, cooldownAck receiver
@@ -195,11 +225,11 @@ src/client/
 | 3 | Color picker + cooldown ring + DUCK UI + feet-based paint + palette v2 | ✅ done |
 | 4 | Spectator / top-down camera + touch-control polish | ✅ camera done, mobile polish this session |
 | 5 | Leaderboard UI + persistence tuning | ✅ done (this session) |
-| 6 | Snapshot pipeline (JPG → in-world board + web endpoint) | ⏳ |
+| 6 | Snapshot pipeline (PNG → Discord archive channel) | ✅ done this session (in-world board deferred — needs stable URL, Discord CDN signs+expires) |
 | 7 | First mobile playtest, tune cooldown/palette | 🟡 partial — cooldown tuned to 1s, mobile margins verified, real playtest still open |
 | 8 | Chunked canvas persistence | 🟡 single-blob live; chunked only needed past ~100k cells |
-| 9 | Deploy to World, playtest, polish | ⏳ |
-| 10 | README, DoraHacks submission, demo video | ⏳ |
+| 9 | Deploy to World, playtest, polish | 🟡 first deploy live at `dclplace.dcl.eth`, playtest + iterate remaining |
+| 10 | README, DoraHacks submission, demo video | ⏳ (timelapse video from Discord archive is part of this) |
 
 ---
 
@@ -207,11 +237,12 @@ src/client/
 
 Pick one:
 
-1. **Snapshot / JPG export (Day 6).** Biggest remaining external dependency. Needs a design decision first: where do JPGs live? Own signed endpoint? World-hosted static? IPFS? Once decided, implementation is: read paint state → render to canvas → post/upload → in-world display board.
-2. **Real mobile playtest.** UI is now mobile-adjusted but nobody's touched it on an actual phone. Look for tap-target issues, safe-area problems, picker overflow on narrow portrait viewports.
-3. **Chunked persistence.** Only necessary if we're worried about the demo overflowing single-blob storage. At current growth rate, we're not close.
-4. **Deploy to a World (Day 9).** Would give us a shareable URL for playtesting and demo purposes without waiting for Day 10.
-5. **Yellow-swatch F contrast fix.** Small polish — compute luminance in `renderPaintButton` and auto-pick black/white for the F glyph.
+1. **Real mobile playtest on the deployed World.** UI is mobile-adjusted but nobody's touched it on an actual phone in-world. Look for tap-target issues, safe-area problems, picker overflow on narrow portrait viewports.
+2. **Timelapse download script.** ~30-line Node/Python that pages Discord API (`GET /channels/{id}/messages`), downloads every attachment in order, runs `ffmpeg -framerate 24 -pattern_type glob -i 'snapshots/*.png' timelapse.mp4`. Needed for Day 10 demo video.
+3. **Refactor maze → solid grid.** Rip the maze generator out entirely, spawn a plain 20×20 grid of `tile-cross-full.glb` directly. Faster, more reliable, no first-deploy GLB race. Small win.
+4. **Chunked persistence.** Only necessary if we're worried about the demo overflowing single-blob storage. At current growth rate, we're not close.
+5. **In-world snapshot display board.** Blocked on stable-URL hosting (Discord signs+expires). Needs Cloudflare R2 / Vercel Blob decision when we care.
+6. **Yellow-swatch F contrast fix.** Small polish — compute luminance in `renderPaintButton` and auto-pick black/white for the F glyph.
 
 ---
 
