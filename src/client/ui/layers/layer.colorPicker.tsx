@@ -284,7 +284,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 						// area of the paint button on mobile. See snowdrift bug
 						// report: react-ecs-richtext-hitbox-mismatch.md.
 						value    : 'click',
-						fontSize : 30,
+						fontSize : 28,
 						color    : selectedPaletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
 						textAlign: 'middle-center',
 					}}
