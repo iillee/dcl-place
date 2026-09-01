@@ -31,8 +31,8 @@ const BAR_TOP_MB       = 28
 const BTN_SIZE         = 72
 const GAP_BELOW_BAR_PX = 16
 
-const PANEL_W = 500
-const PANEL_H = 240
+const PANEL_W = 380
+const PANEL_H = 200
 
 
 // MARK: HelpPanelLayer
@@ -72,19 +72,8 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 32, margin: { bottom: 8 } }}
 					uiText = {{
-						value    : '<b>welcome to dclplace</b>',
+						value    : '<b>welcome to <color=#ffcc4d>dclplace</color>!</b>',
 						fontSize : 24,
-						color    : WHITE,
-						textAlign: 'middle-center',
-					}}
-				/>
-
-				{/* Tagline */}
-				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12 } }}
-					uiText = {{
-						value    : 'a public drawing board',
-						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-center',
 					}}
@@ -92,16 +81,16 @@ class HelpPanelLayer extends Layer {
 
 				{/* Rules — three concise lines */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4 } }}
+					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4, left: 16 } }}
 					uiText = {{
-						value    : '<b><color=#ffcc4d>1.</color></b>  select a color form the pallete',
+						value    : '<b><color=#ffcc4d>1.</color></b>  select a color from the pallete',
 						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-left',
 					}}
 				/>
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4 } }}
+					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4, left: 16 } }}
 					uiText = {{
 						value    : '<b><color=#ffcc4d>2.</color></b>  place 1 pixel every 1 second',
 						fontSize : 18,
@@ -110,7 +99,7 @@ class HelpPanelLayer extends Layer {
 					}}
 				/>
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12 } }}
+					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12, left: 16 } }}
 					uiText = {{
 						value    : '<b><color=#ffcc4d>3.</color></b>  make art',
 						fontSize : 18,
