@@ -13,13 +13,12 @@ import { engine } from '@dcl/sdk/ecs'
 import { movePlayerTo } from '~system/RestrictedActions'
 import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
 
-// Scene is 4 parcels wide (x: 0-64m) x 7 tall (z: 0-112m). Spawn at the
-// geometric centre — the maze generator places a cross tile there. If the
-// scene footprint changes, update these coordinates too or movePlayerTo
-// will silently fail with "Position is out of scene" and the player will
-// stay stranded wherever the client dropped them.
-const SPAWN_POSITION      = { x: 32, y: 2, z: 56 }
-const SPAWN_CAMERA_TARGET = { x: 32, y: 2, z: 64 }
+// Scene is 20 parcels x 20 parcels (320m x 320m). Spawn at the geometric
+// centre. If the scene footprint changes, update these coordinates too or
+// movePlayerTo will silently fail with "Position is out of scene" and the
+// player will stay stranded wherever the client dropped them.
+const SPAWN_POSITION      = { x: 160, y: 2, z: 160 }
+const SPAWN_CAMERA_TARGET = { x: 160, y: 2, z: 168 }
 
 function teleportHome(): void {
   // Fire-and-forget: movePlayerTo can reject if the player has moved

@@ -72,7 +72,7 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 32, margin: { bottom: 8 } }}
 					uiText = {{
-						value    : '<b>dcl/place</b>',
+						value    : '<b>welcome to dclplace</b>',
 						fontSize : 24,
 						color    : WHITE,
 						textAlign: 'middle-center',
@@ -83,7 +83,7 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12 } }}
 					uiText = {{
-						value    : 'The eternal collaborative pixel canvas.',
+						value    : 'a public drawing board',
 						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-center',
@@ -94,7 +94,7 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4 } }}
 					uiText = {{
-						value    : '<b><color=#ffcc4d>1.</color></b>  Walk to any tile on the canvas',
+						value    : '<b><color=#ffcc4d>1.</color></b>  select a color form the pallete',
 						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-left',
@@ -103,7 +103,7 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 4 } }}
 					uiText = {{
-						value    : '<b><color=#ffcc4d>2.</color></b>  Pick a color from the bottom palette',
+						value    : '<b><color=#ffcc4d>2.</color></b>  place 1 pixel every 1 second',
 						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-left',
@@ -112,7 +112,7 @@ class HelpPanelLayer extends Layer {
 				<UiEntity
 					uiTransform = {{ width: '100%', height: 26, margin: { bottom: 12 } }}
 					uiText = {{
-						value    : '<b><color=#ffcc4d>3.</color></b>  Tap PAINT — every <b><color=#ffcc4d>1s</color></b>. Nothing resets.',
+						value    : '<b><color=#ffcc4d>3.</color></b>  make art',
 						fontSize : 18,
 						color    : WHITE,
 						textAlign: 'middle-left',

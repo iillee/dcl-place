@@ -4,8 +4,8 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main`
-**Last committed session:** aebf2a4 — "feat(ui,fx): mobile paint fix, preview pop-up anim, palette match, sfx timing"
-**This session:** Day 6 landed — Discord snapshot pipeline (server-side PNG encode + webhook upload, auto every 5min if dirty + on-demand ⬇ button), World deploy to `dclplace.dcl.eth`, closer default spectator zoom, case-sensitivity fixes for deploy.
+**Last committed session:** 6035060 — "feat(snapshot): Discord webhook archive pipeline + first World deploy"
+**This session:** UX polish pass — spectator camera rotated 90° CCW (+X up, +Z right on screen) for both drag and d-pad, player spawn corrected to true scene center (160,160), snapshot ⬇ button removed from top bar, cold-open loading splash added (thumbnail overlay until first tile cascade drains), E hotkey now cycles palette LEFT (was right), help panel copy rewritten ("welcome to dclplace / a public drawing board").
 **Deadline:** September 7, 2026
 **Live World:** `dclplace.dcl.eth` — https://decentraland.org/play/?realm=dclplace.dcl.eth
 
@@ -51,7 +51,41 @@ Active state = warm gold accent. Leaderboard and Help slide down from the top-ce
 
 ---
 
-## 🆕 Latest session — Day 6 snapshot pipeline + first World deploy
+## 🆕 Latest session — UX polish
+
+### Spectator camera rotation (90° CCW)
+Screen axes were inconsistent with world axes. Rotated the overhead view so **+X is up on screen, +Z is right**. Three touch-points:
+- `src/client/topDownCamera.ts` — `applyPanDelta` sign flipped: `targetPos.x += -dyPx * m; targetPos.z += +dxPx * m` (camera-follows-finger).
+- `src/client/topDownCamera.ts` — camera offset from directly-overhead moved from `+X` (`CAM_EAST_OFFSET = 3`) to `-Z` (`CAM_OFFSET_Z = -3`). Offset direction determines what world axis is "up" on screen; flipping to –Z produced the correct CCW rotation (initial +Z guess was CW, flipped).
+- `src/client/ui/layers/layer.topDownPan.tsx` — d-pad up/down vectors flipped: up = `vx:+1`, down = `vx:-1`. Left/right unchanged (already matched +Z-right).
+- **Discord snapshots unaffected** — server-side PNG encoder reads `paintState.cellIndex` directly, no camera dependency.
+
+### Player spawn fixed
+- `scene.json` spawn range updated to `x/z: [158, 162]` (center of the 320×320m scene).
+- **The real bug:** `src/client/player.ts` was teleporting every player to `(32, 2, 56)` — hardcoded from the old 4×7 scene footprint. That teleport ran ~2s after load and overrode scene.json. Updated to `(160, 2, 160)` with camera target `(160, 2, 168)`.
+
+### Snapshot ⬇ button removed
+- Deleted `DownloadGlyph`, `onSnapshotClick`, the on-demand PanelButton, and the unused `room` import from `src/client/ui/layers/layer.topBar.tsx`.
+- Top bar back to 4 buttons: spectator · mute · ★ leaderboard · ? help.
+- Server-side auto-post to Discord every 5 min still runs; only the manual client trigger is gone.
+
+### Cold-open loading splash
+- New `src/client/ui/layers/layer.loadingSplash.tsx` — full-screen `assets/images/dclplace.png` overlay, ported from snowdrift's `layer.loadingSplash` (simplified: no cycle-rollover override since dcl/place has no rounds).
+- Visible while `isRebuilding()` is true OR `<2500ms` since module load OR the tile cascade hasn't started yet (fast-client latch via `hasSeenRebuildStart`).
+- Registered last in `src/client/ui/index.tsx` so it draws above everything.
+
+### Hotkey + copy tweaks
+- **E cycles palette backward** now (was forward). Wrap `1 → 8` instead of `8 → 1`. See `src/client/placeInput.ts`.
+- **Help panel copy** rewritten in `src/client/ui/layers/layer.helpPanel.tsx`:
+  - Title: "welcome to dclplace"
+  - Subtitle: "a public drawing board"
+  - 1. select a color form the pallete
+  - 2. place 1 pixel every 1 second
+  - 3. make art
+
+---
+
+## Previous session — Day 6 snapshot pipeline + first World deploy
 
 ### Discord snapshot pipeline (Day 6 ✅)
 The canvas now backs itself up to a Discord channel automatically — the channel *is* the timelapse archive.

@@ -15,7 +15,8 @@ import { helpPanelLayer }   from 'src/client/ui/layers/layer.helpPanel'
 import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 import { topBarLayer }      from 'src/client/ui/layers/layer.topBar'
 import { topDownPanLayer }  from 'src/client/ui/layers/layer.topDownPan'
-import { versionLayer }     from 'src/client/ui/layers/layer.version'
+import { versionLayer }        from 'src/client/ui/layers/layer.version'
+import { loadingSplashLayer }  from 'src/client/ui/layers/layer.loadingSplash'
 
 
 // MARK: setupUi
@@ -32,6 +33,8 @@ export function setupUi() {
 			helpPanelLayer,
 			leaderboardLayer,
 			colorPickerLayer,
+			// Splash must be last so it renders on top of every other layer.
+			loadingSplashLayer,
 		],
 	})
 }

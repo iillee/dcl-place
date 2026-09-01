@@ -276,8 +276,8 @@ export function placeAtFeet(): void {
 
 /** Desktop hotkeys:
  *    F (IA_SECONDARY) — fires placeAtFeet(), same as the paint button.
- *    E (IA_PRIMARY)   — cycles the selected palette color forward,
- *                       wrapping at the end.
+ *    E (IA_PRIMARY)   — cycles the selected palette color backward
+ *                       (left along the picker), wrapping at the start.
  *  Mobile has no keyboard; the picker + button own touch input. */
 export function initPaintHotkey(): void {
 	if (isMobile()) return
@@ -286,9 +286,9 @@ export function initPaintHotkey(): void {
 			placeAtFeet()
 		}
 		if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
-			// paletteIndex is 1..PLACE_PALETTE_SIZE; wrap 8 → 1.
+			// paletteIndex is 1..PLACE_PALETTE_SIZE; wrap 1 → 8 (left / backward).
 			const cur  = getSelectedPaletteIndex()
-			const next = (cur % PLACE_PALETTE_SIZE) + 1
+			const next = cur === 1 ? PLACE_PALETTE_SIZE : cur - 1
 			setSelectedPaletteIndex(next)
 			playUiClick()
 		}

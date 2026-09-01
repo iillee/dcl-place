@@ -41,7 +41,12 @@ const CAM_ALTITUDE_MIN             = 20
 const CAM_ALTITUDE_MAX             = 140
 const CAM_ALTITUDE_STEP            = 10
 
-const CAM_EAST_OFFSET = 3
+// Offset direction from directly-overhead determines what world axis is
+// "up" on screen. Offset on +Z rotates the view 90° CCW from the old
+// +X offset, so now +X points up and +Z points right on screen (matches
+// the pan/d-pad axes).
+const CAM_OFFSET_X = 0
+const CAM_OFFSET_Z = -3
 const TRANSITION_SPEED = 200
 const FOLLOW_RATE = 5.0
 const FOLLOW_SNAP_EPSILON = 0.05
@@ -80,7 +85,7 @@ export function setupTopDownCamera(): void {
 
 	camEntity = engine.addEntity()
 	Transform.create(camEntity, {
-		position: Vector3.create(targetPos.x + CAM_EAST_OFFSET, currentAltitude, targetPos.z),
+		position: Vector3.create(targetPos.x + CAM_OFFSET_X, currentAltitude, targetPos.z + CAM_OFFSET_Z),
 	})
 	VirtualCamera.create(camEntity, {
 		lookAtEntity:      lookTargetEnt,
@@ -145,9 +150,9 @@ function updateCamera(dt: number): void {
 	}
 	if (camEntity !== null) {
 		const t = Transform.getMutable(camEntity)
-		t.position.x = targetPos.x + CAM_EAST_OFFSET
+		t.position.x = targetPos.x + CAM_OFFSET_X
 		t.position.y = currentAltitude
-		t.position.z = targetPos.z
+		t.position.z = targetPos.z + CAM_OFFSET_Z
 	}
 }
 
@@ -217,9 +222,12 @@ export function applyPanDelta(dxPx: number, dyPx: number): void {
 
 	mode = Mode.FREE
 
+	// Screen axes: +X is up, +Z is right.
+	// Camera follows finger: drag down (+dy) → camera moves -X (down on screen);
+	// drag right (+dx) → camera moves +Z (right on screen).
 	const mPerPx = DRAG_M_PER_PX_BASE * (currentAltitude / 30)
-	targetPos.x +=  dyPx * mPerPx
-	targetPos.z += -dxPx * mPerPx
+	targetPos.x += -dyPx * mPerPx
+	targetPos.z +=  dxPx * mPerPx
 }
 
 

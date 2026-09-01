@@ -14,3 +14,6 @@ yarn-error.log*
 # runtime
 .runtime-data/
 node_modules/@dcl/sdk-commands/.runtime-data/
+
+# canvas state backups (large, volatile, dated)
+backups/

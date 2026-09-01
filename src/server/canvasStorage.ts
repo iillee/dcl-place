@@ -32,7 +32,12 @@ import {
 } from 'src/server/paintState'
 
 
-const STORAGE_KEY = 'dcl-place:canvas:v1'
+const STORAGE_KEY      = 'dcl-place:canvas:v1'
+// One-generation rolling backup. Before overwriting the main key we copy
+// the current value here — so if a bad flush corrupts main we still have
+// the previous good state one command away:
+//   npx sdk-commands storage scene get "dcl-place:canvas:v1:prev"
+const STORAGE_KEY_PREV = 'dcl-place:canvas:v1:prev'
 
 
 // MARK: loadCanvas
@@ -90,6 +95,20 @@ export async function saveCanvas(): Promise<void> {
 			parts.push(`${key.toString(36)}:${idx.toString(36)}`)
 		}
 		const blob = parts.join(',')
+
+		// Roll current main → prev before overwriting. Never fatal — if the
+		// prev-copy fails we still save the new state (better one generation
+		// than none). Only skipped if main has never been written yet.
+		try {
+			const current = await Storage.get<string>(STORAGE_KEY)
+			if (current && current.length > 0) {
+				const pOk = await Storage.set(STORAGE_KEY_PREV, current)
+				if (!pOk) console.log('[CanvasStorage] prev-backup Storage.set returned false (non-fatal)')
+			}
+		} catch (err) {
+			console.log(`[CanvasStorage] prev-backup failed (non-fatal): ${err}`)
+		}
+
 		const ok = await Storage.set(STORAGE_KEY, blob)
 		if (!ok) {
 			console.error(`[CanvasStorage] Storage.set returned false (${parts.length} cells, ${blob.length}B)`)
