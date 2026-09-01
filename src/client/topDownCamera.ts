@@ -227,9 +227,9 @@ export function applyPanDelta(dxPx: number, dyPx: number): void {
 	// Mobile: camera-follows-finger (push the world) — drag right → camera +X.
 	// Desktop: grab-and-pull (Google-Maps convention) — drag right → camera -X.
 	const mPerPx = DRAG_M_PER_PX_BASE * (currentAltitude / 30)
-	const sign   = isMobile() ? 1 : -1
-	targetPos.x +=  sign * dxPx * mPerPx
-	targetPos.z += -sign * dyPx * mPerPx
+	const xSign  = isMobile() ? 1 : -1
+	targetPos.x +=  xSign * dxPx * mPerPx
+	targetPos.z += -dyPx * mPerPx
 }
 
 
