@@ -278,8 +278,13 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 						alignItems    : 'center',
 					}}
 					uiText = {{
-						value    : '<b>click</b>',
-						fontSize : 28,
+						// Plain string (no <b>) — rich-text markup on a Label/uiText
+						// bleeds into the parent hitbox measurement even when the
+						// child is absolutely positioned, shrinking the tappable
+						// area of the paint button on mobile. See snowdrift bug
+						// report: react-ecs-richtext-hitbox-mismatch.md.
+						value    : 'click',
+						fontSize : 30,
 						color    : selectedPaletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
 						textAlign: 'middle-center',
 					}}
