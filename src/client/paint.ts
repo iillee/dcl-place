@@ -512,14 +512,3 @@ export function worldToCellId(
 }
 
 
-// -------- initPaintingSystem: no-op in dcl/place (kept for boot compat) --------
-
-export function initPaintingSystem(
-	_CELL: number, _STEP: number,
-	_lookupTile: (tx: number, tz: number, py: number) => { type: string; r: number; y: number } | null,
-): void {
-	// dcl/place uses tap-to-place (see placeInput.ts), not walking-brush paint.
-	// Silence unused-var warnings without imports.
-	void _CELL; void _STEP; void _lookupTile
-	void PLACE_PALETTE_SIZE
-}

@@ -1,278 +1,179 @@
-# SDK7 Template scene
+# dcl/place
 
-## Try it out
+> **The eternal collaborative pixel canvas of Decentraland.**
+> Place one pixel every second. Nothing ever resets.
 
-**With the Creator Hub (recommended)**
+A mobile-first Decentraland re-imagining of Reddit's r/place: a single giant walkable pixel canvas that lives in a Decentraland World, is shared by every visitor, and **persists forever**. Pixels placed today may still be there in a year. Tribes form, defend territory, alliances rise and fall — the whole social drama of r/place, native to a 3D social world.
 
-1. Download this repository.
+**Live:** [`dclplace.dcl.eth`](https://decentraland.org/play/?realm=dclplace.dcl.eth)
+**Submission:** Friendzone Mobile Buildathon (Sep 7, 2026)
 
-2. Install the [Creator Hub](https://decentraland.org/download/creator-hub), the official desktop app for creating, previewing, and publishing Decentraland scenes.
+![dcl/place](assets/images/dclplace.png)
 
-3. In the **Scenes** tab, import this scene's root folder.
+---
 
-4. Press **Preview** to explore the scene in Decentraland.
+## The pitch
 
-**With the command line**
+- **One pixel every second.** Server-enforced per-wallet cooldown, no exceptions.
+- **Nothing resets.** No rounds, no daily wipes, no scheduled events. The canvas *is* the experience.
+- **8-color palette.** Classic r/place restraint — every collaboration decision matters.
+- **Mobile-first.** Tap-to-place is better on touch than mouse; every affordance works one-handed.
+- **Automatic timelapse.** The server posts periodic PNG snapshots to a Discord webhook — the channel *is* the archive.
 
-Inside this scene's root directory run:
+---
+
+## How to play
+
+1. Walk onto the canvas. A colored highlight cube tracks your feet, previewing your next placement.
+2. Pick a color from the 8-swatch palette at the bottom of the screen.
+3. Tap the **paint button** (or press **F** on desktop) to place a pixel where you're standing.
+4. The button refills over 1 second — when it's full, you can paint again.
+5. Open the **spectator camera** (top-left button, or press **1**) for a top-down overview.
+
+### Desktop hotkeys
+| Key | Action |
+|---|---|
+| `F` | Place pixel |
+| `E` | Cycle to next palette color |
+| `1` | Toggle spectator camera |
+| `2` | Toggle mute |
+| `3` | Toggle leaderboard |
+| `4` | Toggle help panel |
+
+### Mobile
+The four native on-screen buttons are repurposed: eye = spectator, `E` = mute, `F` = leaderboard, `+` = help. The `click` hint on the paint button appears when your cooldown is ready.
+
+---
+
+## Scene
+
+| | |
+|---|---|
+| **World** | `dclplace.dcl.eth` |
+| **Parcels** | 20 × 20 = 400 (320m × 320m) |
+| **Canvas** | 320 × 320 = **102,400 pixels**, 1m per pixel |
+| **Palette** | 8 colors (blue, red, yellow, green, purple, orange, white, black) |
+| **Cooldown** | 1 second per wallet (server-enforced) |
+| **SDK** | `@dcl/sdk@auth-server` (authoritative Multiplayer Server) |
+
+---
+
+## Architecture
+
+Single codebase, branched at the entry point via the **async** `isServer()` from `~system/EngineApi` (never the sync helper from `@dcl/sdk/network` — it starts false and races `main()`).
 
 ```
+src/
+├── index.ts              # async isServer() branch
+├── shared/               # loaded by BOTH sides
+│   ├── messages.ts       # placePixel, cooldownAck, joinRoster, updateName, requestLeaderboard
+│   ├── components.ts     # PaintCell, PaletteEntry, PaintCoverage, LeaderboardState
+│   ├── palette.ts        # 8-color PLACE_PALETTE (+ unpainted grey #EAEAEA — see invariant below)
+│   ├── settings.ts       # PAINT_COOLDOWN_MS, scene geometry, tuning knobs
+│   ├── paintGrid.ts      # cellId ↔ world-coord math (uint32 packing)
+│   ├── paintSync.ts      # syncEntity wiring (server-only writes)
+│   └── maze/             # tile-grid generator (verbatim from dcl-canvas)
+├── server/               # isServer() === true
+│   ├── server.ts         # message handlers + 30s canvas flush + 1s leaderboard tick + snapshot auto-post
+│   ├── paintState.ts     # authoritative cell map + palette interning
+│   ├── canvasStorage.ts  # Storage.get/set for the eternal canvas (single blob, dirty-flushed)
+│   ├── leaderboard.ts    # top-100 all-time paint counts, dirty-tick published
+│   ├── snapshotDiscord.ts# server-side PNG encoder + Discord webhook multipart upload
+│   └── discord.ts        # optional join notifications
+└── client/               # isServer() === false
+    ├── index.ts          # boot orchestrator
+    ├── clientHandler.ts  # network boundary (room.on / room.send)
+    ├── placeInput.ts     # feet-tracker + highlight cube + F hotkey
+    ├── paint.ts          # cell renderer + CRDT observer
+    ├── placeState.ts     # selected color + cooldown observable
+    ├── topDownCamera.ts  # spectator VirtualCamera + pan/zoom
+    ├── touchControls.ts  # mobile on-screen button remapping (SDK 7.26+)
+    ├── audio.ts          # music + SFX
+    ├── maze/rebuild.ts   # tile-grid spawn cascade
+    └── ui/               # React-ECS HUD via DUCK (@stom66/dcl-ui-component-kit)
+        └── layers/
+            ├── layer.colorPicker      # swatches + inline paint button (fuel-fill pattern)
+            ├── layer.leaderboard      # slide-down top-10 panel
+            ├── layer.topBar           # spectator · mute · ★ · ?
+            ├── layer.helpPanel        # slide-down 3-line rules
+            ├── layer.topDownPan       # spectator drag catcher
+            ├── layer.loadingSplash    # cold-open splash
+            └── layer.version          # build-version chip
+```
+
+### Key contracts
+
+**Client → Server:**
+- `placePixel { cellId, paletteIndex: 1..8 }`
+- `requestLeaderboard {}` (fired once when the panel opens)
+- `updateName { name }`, `joinRoster { userId }`
+
+**Server → Client (addressed):**
+- `cooldownAck { accepted, nextAllowedAt, serverNow }` — clients store `serverSkewMs = serverNow − Date.now()` so cooldowns are always server-clock-truthful.
+
+**Sync (CRDT, server-owned writes):**
+- `PaintCell.index` — 1 byte per painted cell (sparse)
+- `PaletteEntry.color` — 8 slots interned at boot into fixed indexes 1..8
+- `PaintCoverage`, `LeaderboardState.json`
+
+### Design decisions worth remembering
+
+- **Permanence is the pitch.** No round resets. Ever.
+- **Server owns the clock.** Client never trusts `Date.now()` for cooldown.
+- **Sparse CRDT.** Only painted cells cost anything — an untouched canvas is free.
+- **Palette invariant:** the "unpainted" color (`#EAEAEA`) must never equal any palette color. Server's `internColor()` dedupes by exact color, so if unpainted collided with palette-white, both would alias index 0 and clients would render white as grey (or worse).
+- **Feet, not cursor.** Placement follows the avatar, and jumping/gliding hides the preview — no sky-painting.
+- **Paint button IS the cooldown.** One visual signals three things: current color, cooldown progress, and tap target.
+- **Leaderboard publishes on a throttle, not per-paint.** Constant broadcast cost (~150 KB/s at 100 clients) regardless of activity — never publish on every `incrementPaint`.
+- **Canvas persistence is a single blob**, flushed every 30s. Fine below ~100k cells; chunked storage is a Day-8 upgrade that isn't blocking.
+
+### Discord snapshot pipeline
+
+The server encodes the canvas as a PNG (2× upscale → 640×640) and posts it to a Discord webhook every 5 minutes if the canvas is dirty. Discord attachment CDN URLs are signed and expire in ~24h, so we treat the channel as an archive-only store: scrapes work via `GET /channels/{id}/messages` (Discord re-signs on read), but the URLs can't be used as live in-world textures.
+
+Enable by setting the `DISCORD_SNAPSHOT_WEBHOOK` EnvVar **after** your first deploy:
+
+```bash
+npx sdk-commands storage env set DISCORD_SNAPSHOT_WEBHOOK --value "https://discord.com/api/webhooks/..."
+```
+
+Locally, a `.env` file with the same key works (gitignored).
+
+---
+
+## Development
+
+### Run locally
+
+```bash
 npm install
-npm run start
+npm run start    # local preview + local Multiplayer Server
+npm run build    # type-check + bundle
+npm run deploy   # publish to the configured World
 ```
 
-**With an AI coding assistant**
+Log prefixes: `[Server]`, `[Client]`, `[Place]`, `[CanvasStorage]`.
 
-If you build with an AI coding assistant (Claude Code, Cursor, GitHub Copilot, and others), install the official Decentraland SDK Skills first. They teach your agent verified SDK7 patterns for every topic: scene creation, 3D models, interactivity, UI, multiplayer, deployment, and more.
+### Multi-client local testing
+
+Open a second explorer with a different wallet:
 
 ```
-npx skills add decentraland/sdk-skills
+decentraland://realm=http://127.0.0.1:8000&local-scene=true&debug=true&multi-instance=true
 ```
 
-See [Vibe Coding with AI](https://docs.decentraland.org/creator/scenes-sdk7/getting-started/vibe-coding) for the full guide.
+### Tuning knobs
 
-## What's new on SDK 7
+- `PAINT_COOLDOWN_MS` in `src/shared/settings.ts` — cooldown in ms (currently 1000).
+- `PAINT_CELLS_PER_TILE_AXIS` in `src/shared/settings.ts` — canvas resolution per tile.
+- Snapshot cadence in `src/server/server.ts` — currently 5 min if dirty.
 
-Below are some basic concepts about the SDK 7 syntax. For more details, see the [Documentation site](https://docs.decentraland.org/creator/).
+---
 
-### Entities
+## Credits
 
-An Entity is just an ID. It is an abstract concept not represented by any data structure. There is no "class Entity". Just a number that is used as a reference to group different components.
+Built by [@iillee](https://github.com/iillee) for the Friendzone Mobile Buildathon.
+Reuses tile/paint-sync systems from `dcl-canvas` and mobile UI patterns from `dcl-snowdrift`.
+UI powered by [DUCK](https://github.com/stom66/dcl-ui-component-kit) (`@stom66/dcl-ui-component-kit`).
 
-```ts
-const myEntity = engine.addEntity()
-console.console.log(myEntity) // 100
-
-// Remove Entity
-engine.removeEntity(myEntity)
-```
-
-> Note: Note that it's no longer necessary to separately create an entity and then add it to the engine, this is all done in a single act.
-
-### Components
-
-The component is just a data container, WITHOUT any functions.
-
-To add a component to an entity, the entry point is now the component type, not the entity.
-
-```ts
-Transform.create(myEntity, <params>)
-```
-
-This is different from how the syntax was in SDK6:
-
-```ts
-// OLD Syntax
-myEntity.addComponent(Transform)
-```
-
-#### Base Components
-
-Base components already come packed as part of the SDK. Most of them interact directly with the renderer in some way. This is the full list of currently supported base components:
-
-- Transform
-- Animator
-- Material
-- MeshRenderer
-- MeshCollider
-- AudioSource
-- AudioStream
-- AvatarAttach
-- AvatarModifierArea
-- AvatarShape
-- Billboard
-- CameraMode
-- CameraModeArea
-- GltfContainer
-- NftShape
-- PointerEventsResult
-- PointerHoverFeedback
-- PointerLock
-- Raycast
-- RaycastResult
-- TextShape
-- VisibilityComponent
-
-```ts
-const entity = engine.addEntity()
-Transfrom.create(entity, {
-  position: Vector3.create(12, 1, 12)
-  scale: Vector3.One(),
-  rotation: Quaternion.Identity()
-})
-GltfContainer.create(zombie, {
-  withCollisions: true,
-  isPointerBlocker: true,
-  visible: true,
-  src: 'models/zombie.glb'
-})
-```
-
-#### Custom Components
-
-Each component must have a unique number ID. If a number is repeated, the engine or another player receiving updates might apply changes to the wrong component. Note that numbers 1-2000 are reserved for the base components.
-
-When creating a custom component you declare the schema of the data to be stored in it. Every field in a component MUST belong to one of the built-in special schemas provided as part of the SDK. These special schemas include extra functionality that allows them to be serialized/deserialized.
-
-Currently, the names of these special schemas are:
-
-##### Primitives
-
-1. `Schemas.Boolean`: true or false (serialized as a Byte)
-2. `Schemas.String`: UTF8 strings (serialized length and content)
-3. `Schemas.Float`: single precission float
-4. `Schemas.Double`: double precision float
-5. `Schemas.Byte`: a single byte, integer with range 0..255
-6. `Schemas.Short`: 16 bits signed-integer with range -32768..32767
-7. `Schemas.Int`: 32 bits signed-integer with range -2³¹..(2³¹-1)
-8. `Schemas.Int64`: 64 bits signed-integer
-9. `Schemas.Number`: an alias to Schemas.Float
-
-##### Specials
-
-10. `Schemas.Entity`: a wrapper to int32 that casts the type to `Entity`
-11. `Schemas.Vector3`: a Vector3 with { x, y, z }
-12. `Schemas.Quaternion`: a Quaternion with { x, y, z, w}
-13. `Schemas.Color3`: a Color3 with { r, g, b }
-14. `Schemas.Color4`: a Colo4 with { r, g, b, a }
-
-##### Schema generator
-
-15. `Schemas.Enum`: passing the serialization Schema and the original Enum as generic
-16. `Schemas.Array`: passing the item Schema
-17. `Schemas.Map`: passing a Map with Schemas as values
-18. `Schemas.Optional`: passing the schema to serialize
-
-Below are some examples of how these schemas can be declared.
-
-```ts
-const object = Schemas.Map({ x: Schemas.Int }) // { x: 1 }
-
-const array = Schemas.Map(Schemas.Int) // [1,2,3,4]
-
-const objectArray = Schemas.Array(Schemas.Map({ x: Schemas.Int })) // [{ x: 1 }, { x: 2 }]
-
-const BasicSchemas = Schemas.Map({
-  x: Schemas.Int,
-  y: Schemas.Float,
-  text: Schemas.String,
-  flag: Schemas.Boolean
-}) // { x: 1, y: 1.412, text: 'ecs 7 text', flag: true }
-
-const VelocitySchema = Schemas.Map({
-  x: Schemas.Float,
-  y: Schemas.Float,
-  z: Schemas.Float
-})
-```
-
-To then create a custom component using one of these schemas, use the following syntax:
-
-```ts
-export const myCustomComponent = engine.defineComponent(MyDataSchema, ComponentID)
-```
-
-For contrast, below is an example of how components were constructed prior to SDK 7.
-
-```ts
-/**
- * OLD SDK
- */
-
-// Define Component
-@Component('velocity')
-export class Velocity extends Vector3 {
-  constructor(x: number, y: number, z: number) {
-    super(x, y, z)
-  }
-}
-// Create entity
-const wheel = new Entity()
-
-// Create instance of component with default values
-wheel.addComponent(new WheelSpin())
-
-/**
- * ECS 7
- */
-// Define Component
-const VelocitySchema = Schemas.Map({
-  x: Schemas.Float,
-  y: Schemas.Float,
-  z: Schemas.Float
-})
-const COMPONENT_ID = 2008
-const VelocityComponent = engine.defineComponent(Velocity, COMPONENT_ID)
-// Create Entity
-const entity = engine.addEntity()
-
-// Create instance of component
-VelocityComponent.create(entity, { x: 1, y: 2.3, z: 8 })
-
-// Remove instance of a component
-VelocityComponent.deleteFrom(entity)
-```
-
-### Systems
-
-Systems are pure & simple functions.
-All your logic comes here.
-A system might hold data which is relevant to the system itself, but no data about the entities it processes.
-
-To add a system, all you need to do is define a function and add it to the engine. The function may optionally include a `dt` parameter with the delay since last frame, just like in prior versions of the SDK.
-
-```ts
-// Basic system
-function mySystem() {
-  console.log('my system is running')
-}
-
-engine.addSystem(mySystem)
-
-// System with dt
-function mySystemDT(dt: number) {
-  console.log('time since last frame:  ', dt)
-}
-
-engine.addSystem(mySystemDT)
-```
-
-#### Query components
-
-The way to group/query the components inside systems is using the method getEntitiesWith.
-`engine.getEntitiesWith(...components)`.
-
-```ts
-function physicsSystem(dt: number) {
-  for (const [entity, transform, velocity] of engine.getEntitiesWith(Transform, Velocity)) {
-    // transform & velocity are read only components.
-    if (transform.position.x === 10) {
-      // To update a component, you need to call the `.mutable` method
-      const mutableVelocity = VelocityComponent.getMutable(entity)
-      mutableVelocity.x += 1
-    }
-  }
-}
-
-// Add system to the engine
-engine.addSystem(physicsSystem)
-
-// Remove system
-engine.removeSystem(physicsSystem)
-```
-
-### Mutability
-
-Mutability is now an important distinction. We can choose to deal with mutable or with immutable versions of a component. We should use `getMutable` only when we plan to make changes to a component. Dealing with immutable versions of components results in a huge gain in performance.
-
-The `.get()` function in a component returns an immutable version of the component. You can only read its values, but can't change any of the properties on it.
-
-```ts
-const immutableTransform = Transform.get(myEntity)
-```
-
-To fetch the mutable version of a component, call it via `ComponentDefinition.getMutable()`. For example:
-
-```ts
-const mutableTransform = Transform.getMutable(myEntity)
-```
+See [`docs/DESIGN.md`](./docs/DESIGN.md) for the full design doc and [`docs/HANDOFF.md`](./docs/HANDOFF.md) for session-by-session engineering notes.
