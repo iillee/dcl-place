@@ -61,6 +61,7 @@ import {
 import { loadCanvas, saveCanvas } from 'src/server/canvasStorage'
 import { initServerStats, startServerStatsTick } from 'src/server/serverStats'
 import { initSnapshotDiscord, postSnapshotNow, snapshotAutoTick } from 'src/server/snapshotDiscord'
+import { initDebugStorm, handleDebugStorm, startDebugStormTick } from 'src/server/debugStorm'
 
 const HEARTBEAT_INTERVAL_S = 5
 const PAINT_SUMMARY_INTERVAL_S = 5
@@ -96,6 +97,8 @@ export async function setupServer(): Promise<void> {
 	bindNameResolver(leaderboardGetName)
 	await initDiscord()
 	await initSnapshotDiscord()
+	await initDebugStorm()
+	startDebugStormTick()
 
 	// PaintTick summary accumulators
 	let placeAttempts     = 0
@@ -166,6 +169,14 @@ export async function setupServer(): Promise<void> {
 		leaderboardIncrement(from, 1)
 		placeApplied++
 		room.send('cooldownAck', { accepted: true, nextAllowedAt: nextAt, serverNow: now }, { to: [from] })
+	})
+
+	// Paint-storm harness — gated on DCL_PLACE_ALLOW_STORM EnvVar server-side
+	// so a stray client can never fire it in production. See debugStorm.ts.
+	room.onMessage('debugStorm', ({ target, mode }, context) => {
+		const from = context?.from ?? '<unknown>'
+		console.log(`[Server] debugStorm from=${from} target=${target} mode=${mode}`)
+		handleDebugStorm(target, mode)
 	})
 
 	room.onMessage('requestSnapshotPost', (_data, context) => {

@@ -25,6 +25,7 @@ import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
 
 import { paintTelemetry } from 'src/client/paint'
 import { paintGridCapacity } from 'src/shared/paintGrid'
+import { room } from 'src/shared/messages'
 
 
 const REFRESH_INTERVAL_S = 0.5
@@ -124,9 +125,46 @@ class PerfHudLayer extends Layer {
 						}}
 					/>
 				))}
+
+				{/* Debug storm buttons — server-side gated on DCL_PLACE_ALLOW_STORM.
+				    Clicks fail silently in production. */}
+				<UiEntity
+					key         = "ui_PerfHud_stormRow"
+					uiTransform = {{ width: '100%', height: 26, margin: { top: 6 }, flexDirection: 'row' }}
+				>
+					{stormButton('25k',  25000,  'random')}
+					{stormButton('50k',  50000,  'random')}
+					{stormButton('100k', 100000, 'random')}
+					{stormButton('FILL', 102400, 'fill')}
+					{stormButton('CLR',  0,      'clear')}
+				</UiEntity>
 			</UiEntity>
 		)
 	}
+}
+
+
+// MARK: stormButton
+
+function stormButton(label: string, target: number, mode: string) {
+	return (
+		<UiEntity
+			key         = {`ui_PerfHud_storm_${label}`}
+			uiTransform = {{
+				height      : 24,
+				width       : 60,
+				margin      : { right: 4 },
+			}}
+			uiBackground = {{ color: mode === 'clear'
+				? { r: 0.6, g: 0.15, b: 0.15, a: 0.95 }
+				: { r: 0.15, g: 0.35, b: 0.55, a: 0.95 } }}
+			uiText       = {{ value: label, fontSize: 12, color: { r: 1, g: 1, b: 1, a: 1 }, textAlign: 'middle-center' }}
+			onMouseDown  = {() => {
+				console.log(`[PerfHud] storm click: target=${target} mode=${mode}`)
+				room.send('debugStorm', { target, mode })
+			}}
+		/>
+	)
 }
 
 

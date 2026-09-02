@@ -438,14 +438,9 @@
             "ageRating": "A",
             "categories": [],
             "author": "dcl-place",
-            "tags": [
-              ""
-            ],
+            "email": "",
+            "tags": [],
             "layout": {
-              "base": {
-                "x": 0,
-                "y": 0
-              },
               "parcels": [
                 {
                   "x": 0,
@@ -2047,8 +2042,14 @@
                   "x": 19,
                   "y": 19
                 }
-              ]
+              ],
+              "base": {
+                "x": 0,
+                "y": 0
+              }
             },
+            "silenceVoiceChat": false,
+            "disablePortableExperiences": false,
             "spawnPoints": [
               {
                 "name": "CenterSpawn",
@@ -2062,8 +2063,11 @@
                     ]
                   },
                   "y": {
-                    "$case": "single",
-                    "value": 1
+                    "$case": "range",
+                    "value": [
+                      1,
+                      1
+                    ]
                   },
                   "z": {
                     "$case": "range",
@@ -2080,7 +2084,10 @@
                 }
               }
             ],
-            "skyboxConfig": {}
+            "skyboxConfig": {},
+            "creator": "",
+            "disableNearbyVoiceChat": false,
+            "hideLandscapeTerrain": false
           }
         }
       }
