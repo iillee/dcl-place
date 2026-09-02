@@ -10,7 +10,6 @@
 import { Color4 } from '@dcl/sdk/math'
 
 import {
-	PaintCell,
 	PaletteEntry,
 	PaintCoverage,
 } from 'src/shared/components'
@@ -29,10 +28,11 @@ import {
 	placeColor,
 } from 'src/shared/palette'
 import {
-	ensurePaintCellEntity,
 	ensurePaletteEntity,
-	eachPaintCellEntity,
 	getPaintCoverageEntity,
+	writeCellByte,
+	zeroAllPaintTiles,
+	paintedCellCount as tilePaintedCellCount,
 } from 'src/shared/paintSync'
 import { Team } from 'src/shared/team'
 
@@ -150,6 +150,11 @@ export function isSnapshotDirty(): boolean { return snapshotDirty }
 export function markSnapshotClean(): void { snapshotDirty = false }
 export function paintedCellCount(): number { return cellIndex.size }
 
+/** Number of non-zero bytes actually resident in tile buffers. Should
+ *  match paintedCellCount() in normal operation; divergence indicates a
+ *  writeCellByte failure (e.g. unpackable cell id). Telemetry only. */
+export function tileBufferPaintedCount(): number { return tilePaintedCellCount() }
+
 /** Palette color lookup (index → Color4). Undefined if slot unused. */
 export function paletteColorAt(index: number): Color4 | undefined {
 	return indexToColor[index]
@@ -211,11 +216,11 @@ function writeCellIndex(id: string, index: number): boolean {
 		// Invalid brush edge / ramp index — drop quietly (client also filters).
 		return false
 	}
-	const entity = ensurePaintCellEntity(key)
-	const cur    = PaintCell.getOrNull(entity)
-	if (cur?.index === index) return true
-	PaintCell.createOrReplace(entity, { index })
-	noteComponentChange(1)
+	// PaintTile chunked write: mutates the per-tile byte buffer in place
+	// and marks the tile dirty. The actual CRDT broadcast happens once per
+	// tick from flushDirtyPaintTiles() in server.ts.
+	const changed = writeCellByte(key, index)
+	if (changed) noteComponentChange(1)
 	return true
 }
 
@@ -263,17 +268,19 @@ export function publishCoverage(): void {
 // MARK: clearAll
 
 /**
- * Round reset: zero every PaintCell component and clear the cell map.
- * Palette entries are kept (stable indexes across rounds).
+ * Admin-only reset: zero every tile buffer and clear the cell map.
+ * Palette entries are kept (stable indexes across resets).
+ *
+ * dcl/place is a permanent canvas — this is never called during normal
+ * operation. Kept for parity with the legacy team-based codebase and for
+ * any future admin tooling.
  */
 export function clearAll(): void {
+	const n = cellIndex.size
 	cellIndex.clear()
-	let cleared = 0
-	for (const [, entity] of eachPaintCellEntity()) {
-		PaintCell.createOrReplace(entity, { index: PALETTE_NONE })
-		cleared++
-	}
-	if (cleared > 0) noteComponentChange(cleared)
+	// zeroAllPaintTiles wipes the per-tile buffers and marks them dirty.
+	zeroAllPaintTiles()
+	if (n > 0) noteComponentChange(n)
 	coverageDirty = true
 	publishCoverage()
 }

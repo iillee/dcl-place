@@ -15,14 +15,20 @@ import {
 } from '@dcl/sdk/ecs'
 import { Vector3, Quaternion, Color4 } from '@dcl/sdk/math'
 
-import { PaintCell, PaletteEntry, PaintCoverage } from 'src/shared/components'
+import { PaintTile, PaletteEntry, PaintCoverage } from 'src/shared/components'
 import {
 	HI, LO, MASKS, Mask, SIZE,
 	cellId as sharedCellId,
 	rotateMask as sharedRotateMask,
 } from 'src/shared/maze/graph'
 import { TileType } from 'src/shared/maze/tiles'
-import { cellIdToKey, cellKeyFromNetworkId, cellKeyToCellId } from 'src/shared/paintGrid'
+import {
+	cellIdToKey,
+	cellKeyToCellId,
+	joinCellKey,
+	tileKeyFromNetworkId,
+	PAINT_CELLS_PER_TILE,
+} from 'src/shared/paintGrid'
 import {
 	TEAM_COLORS,
 	PALETTE_NONE,
@@ -59,10 +65,50 @@ for (let i = 0; i < PLACE_PALETTE.length; i++) {
 	paletteByIndex.set(i + 1, PLACE_PALETTE[i])
 }
 
-// Last authoritative PaintCell index observed via CRDT.
-const cellApplied   = new Map<number, number>()
+// Per-tile shadow copy of the last-observed PaintTile.cells byte array.
+// Diffed against the incoming CRDT payload each frame; only changed
+// bytes trigger applyPaintIndex. tileKey → byte array (length =
+// PAINT_CELLS_PER_TILE).
+const tileShadow    = new Map<number, number[]>()
 // cellId → last rendered palette index.
 const renderedIndex = new Map<string, number>()
+
+// Telemetry — exported for the perf HUD.
+let observedTiles      = 0
+let observedPaintedPx  = 0
+let firstTileAtMs: number | null = null
+let lastHydrationAtMs: number | null = null
+const moduleLoadMs = Date.now()
+
+/** Look up a cell's last-observed palette byte from the per-tile shadow.
+ *  Returns undefined for cells the CRDT has never touched. */
+function shadowLookup(cellKey: number | null): number | undefined {
+	if (cellKey === null) return undefined
+	const tileKey  = Math.floor(cellKey / PAINT_CELLS_PER_TILE)
+	const localIdx = cellKey - tileKey * PAINT_CELLS_PER_TILE
+	const shadow   = tileShadow.get(tileKey)
+	return shadow ? shadow[localIdx] : undefined
+}
+
+export function paintTelemetry(): {
+	observedTiles: number
+	observedPaintedPx: number
+	tileShadowSize: number
+	firstTileAtMs: number | null
+	lastHydrationAtMs: number | null
+	moduleLoadMs: number
+	paintHydrated: boolean
+} {
+	return {
+		observedTiles,
+		observedPaintedPx,
+		tileShadowSize: tileShadow.size,
+		firstTileAtMs,
+		lastHydrationAtMs,
+		moduleLoadMs,
+		paintHydrated,
+	}
+}
 
 // -------- Compat: teams (dcl/place is teamless) --------
 
@@ -102,23 +148,62 @@ function syncPaletteFromCrdt(): void {
 
 // Hydration gate: the first sync pass loads every persisted pixel and
 // would fire a pop per cell. Flip after the first pass so only live
-// changes make sound. `paintSfxThisFrame` caps output at one pop per
-// frame regardless of how many cells changed (concurrent painters).
+// changes make sound. Coalesced to one pop per frame regardless of how
+// many cells changed (concurrent painters).
 let paintHydrated = false
+
+// Diff each incoming PaintTile buffer against the shadow copy and
+// dispatch applyPaintIndex for each changed byte. Only touches cells
+// that actually flipped — a tile with 1 new pixel costs 1 apply, not
+// PAINT_CELLS_PER_TILE.
 function syncCellsFromCrdt(): void {
 	let anyChange = false
-	for (const [entity, cell] of engine.getEntitiesWith(PaintCell)) {
+	let totalPainted = 0
+	let tileCount = 0
+	for (const [entity, tile] of engine.getEntitiesWith(PaintTile)) {
+		tileCount++
 		const net = NetworkEntity.getOrNull(entity)
 		if (!net) continue
-		const key = cellKeyFromNetworkId(Number(net.entityId))
-		if (key === null) continue
-		if (cellApplied.get(key) === cell.index) continue
-		cellApplied.set(key, cell.index)
-		applyPaintIndex(cellKeyToCellId(key), cell.index, false)
-		anyChange = true
+		const tileKey = tileKeyFromNetworkId(Number(net.entityId))
+		if (tileKey === null) continue
+
+		const incoming = tile.cells
+		if (!incoming || incoming.length !== PAINT_CELLS_PER_TILE) {
+			// Newly-created tile before first buffer set — skip.
+			continue
+		}
+
+		let shadow = tileShadow.get(tileKey)
+		if (!shadow) {
+			shadow = new Array<number>(PAINT_CELLS_PER_TILE).fill(0)
+			tileShadow.set(tileKey, shadow)
+			if (firstTileAtMs === null) firstTileAtMs = Date.now()
+		}
+
+		for (let localIdx = 0; localIdx < PAINT_CELLS_PER_TILE; localIdx++) {
+			const next = incoming[localIdx]
+			if (next !== 0) totalPainted++
+			if (shadow[localIdx] === next) continue
+			shadow[localIdx] = next
+			const cellKey = joinCellKey(tileKey, localIdx)
+			applyPaintIndex(cellKeyToCellId(cellKey), next, false)
+			anyChange = true
+		}
 	}
+
+	observedTiles     = tileCount
+	observedPaintedPx = totalPainted
+
 	if (anyChange && paintHydrated) playClaimSfx()
-	if (!paintHydrated) paintHydrated = true
+	if (!paintHydrated && tileCount > 0) {
+		paintHydrated     = true
+		lastHydrationAtMs = Date.now()
+		console.log(
+			`[Perf/Client] hydration: ${totalPainted} pixels across ${tileCount} tiles ` +
+			`in ${lastHydrationAtMs - moduleLoadMs}ms since module load ` +
+			`(first tile at ${firstTileAtMs !== null ? firstTileAtMs - moduleLoadMs : '?'}ms)`
+		)
+	}
 }
 
 
@@ -246,7 +331,7 @@ export function restoreCellMaterial(id: string): void {
 // -------- Public: teardown helpers used by maze/rebuild --------
 
 export function clearAllPaintState(): void {
-	cellApplied.clear()
+	tileShadow.clear()
 	renderedIndex.clear()
 }
 
@@ -258,8 +343,13 @@ export function removePaintForTile(tileEntity: Entity): void {
 		cellEntity.delete(id)
 		cellData.delete(id)
 		renderedIndex.delete(id)
-		const key = cellIdToKey(id)
-		if (key !== null) cellApplied.delete(key)
+		// Note: intentionally do NOT clear the tile shadow here — the
+		// authoritative PaintTile CRDT still holds the byte, and if the
+		// tile respawns later the shadow-vs-crdt diff will short-circuit
+		// (no re-dispatch needed). If we ever add distance streaming that
+		// respawns tiles, revisit this and drop shadow entries on despawn
+		// so the fresh cell entities get their initial paint applied.
+		void cellIdToKey(id)
 	}
 	paintByTile.delete(tileEntity)
 }
@@ -269,8 +359,6 @@ export function resetPaintForTile(tileEntity: Entity): void {
 	if (!rec) return
 	for (const id of rec.ids) {
 		renderedIndex.set(id, PALETTE_NONE)
-		const key = cellIdToKey(id)
-		if (key !== null) cellApplied.set(key, PALETTE_NONE)
 		applyPaintIndex(id, PALETTE_NONE, true)
 	}
 }
@@ -348,8 +436,7 @@ function spawnCellsForTileImmediate(
 	const spawnPlane = (wx: number, wy: number, wz: number, rot: any, col: number, row: number, scaleY: number = cellSize) => {
 		const id  = cellId(tx, tz, ty, col, row)
 		const key = cellIdToKey(id)
-		const preexisting = (key !== null ? cellApplied.get(key) : undefined)
-			?? renderedIndex.get(id) ?? PALETTE_NONE
+		const preexisting = shadowLookup(key) ?? renderedIndex.get(id) ?? PALETTE_NONE
 		const e = engine.addEntity()
 		Transform.create(e, {
 			position: Vector3.create(wx, wy, wz),
@@ -369,8 +456,7 @@ function spawnCellsForTileImmediate(
 	const spawnFlat = (wx: number, wy: number, wz: number, col: number, row: number) => {
 		const id  = cellId(tx, tz, ty, col, row)
 		const key = cellIdToKey(id)
-		const preexisting = (key !== null ? cellApplied.get(key) : undefined)
-			?? renderedIndex.get(id) ?? PALETTE_NONE
+		const preexisting = shadowLookup(key) ?? renderedIndex.get(id) ?? PALETTE_NONE
 		const e = engine.addEntity()
 		Transform.create(e, {
 			position: Vector3.create(wx, wy + FLAT_THICKNESS / 2, wz),

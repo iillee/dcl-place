@@ -101,6 +101,18 @@ export const Messages = {
 	// current canvas. Server rate-limits per-sender to prevent webhook spam;
 	// no ack is sent (fire-and-forget).
 	requestSnapshotPost: Schemas.Map({}),
+
+	// Client → Server: paint-storm debug trigger. Server ignores unless the
+	// DCL_PLACE_ALLOW_STORM EnvVar is set to "1" — production stays safe. When
+	// enabled, server paints `target` random-color pixels across the canvas,
+	// throttled to STORM_CELLS_PER_TICK per engine tick so the flush loop
+	// stays responsive. mode="fill" paints only currently-unpainted cells;
+	// mode="random" may overwrite existing pixels. mode="clear" wipes the
+	// entire canvas (also gated on the EnvVar). Ignores cooldowns.
+	debugStorm: Schemas.Map({
+		target: Schemas.Int,
+		mode:   Schemas.String,
+	}),
 }
 
 export const room = registerMessages(Messages)
