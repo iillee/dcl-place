@@ -10,7 +10,7 @@ import { syncEntity } from '@dcl/sdk/network'
 
 import { ServerStats } from 'src/shared/components'
 import { paintGridCapacity, STATS_NETWORK_ID } from 'src/shared/paintGrid'
-import { paintCellEntityCount } from 'src/shared/paintSync'
+import { paintTileEntityCount } from 'src/shared/paintSync'
 import { SERVER_STATS_PUBLISH_HZ } from 'src/shared/settings'
 
 const BUCKET_COUNT = 60
@@ -79,7 +79,7 @@ export function startServerStatsTick(getPaintedCells: () => number): void {
 		const snapshot = {
 			tiles:             cap.tiles,
 			paintResolution:   cap.paintCellsPerTileAxis,
-			activeComponents:  paintCellEntityCount(),
+			activeComponents:  paintTileEntityCount(),
 			maxComponents:     cap.cellCapacity,
 			paintedCells:      getPaintedCells(),
 			totalChanges,

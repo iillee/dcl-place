@@ -18,7 +18,12 @@ import { myProfile } from '@dcl/sdk/network'
 
 import { room } from 'src/shared/messages'
 import { paintGridCapacity } from 'src/shared/paintGrid'
-import { initPaintSync, paintCellEntityCount, relinkPaintSync } from 'src/shared/paintSync'
+import {
+	initPaintSync,
+	paintTileEntityCount,
+	relinkPaintSync,
+	flushDirtyPaintTiles,
+} from 'src/shared/paintSync'
 import {
 	PAINT_COOLDOWN_MS,
 	PAINT_TICK_MAX_CELLS,
@@ -224,7 +229,7 @@ export async function setupServer(): Promise<void> {
 					`[Server] placePixel ${PAINT_SUMMARY_INTERVAL_S}s: ` +
 					`attempts=${placeAttempts} applied=${placeApplied} ` +
 					`rejCooldown=${placeRejectedCd} rejBad=${placeRejectedBad} ` +
-					`paintCells=${paintCellEntityCount()}`
+					`paintTiles=${paintTileEntityCount()} painted=${paintedCellCount()}`
 				)
 				placeAttempts    = 0
 				placeApplied     = 0
@@ -236,10 +241,36 @@ export async function setupServer(): Promise<void> {
 		if (heartbeatClock < HEARTBEAT_INTERVAL_S) return
 		heartbeatClock = 0
 		const c = coverage()
+		const cap = paintGridCapacity()
+		const pct = ((paintedCellCount() / cap.cellCapacity) * 100).toFixed(1)
 		console.log(
-			`[Server] alive cells=${paintCellEntityCount()} coverage=${c.total} ` +
-			`cooldownEntries=${nextAllowedAt.size} profileReady=${!!myProfile?.networkId}`
+			`[Perf] tiles=${paintTileEntityCount()}/${cap.tiles * cap.levels} ` +
+			`painted=${paintedCellCount()}/${cap.cellCapacity} (${pct}%) ` +
+			`coverage=${c.total} cooldownEntries=${nextAllowedAt.size} ` +
+			`profileReady=${!!myProfile?.networkId}`
 		)
+	})
+
+	// Flush dirty PaintTile buffers to CRDT once per tick, after all
+	// per-frame mutations from placePixel handlers have landed. Batches
+	// many cell writes per tile into one CRDT broadcast — same tile
+	// painted by 10 players in the same tick = 1 network write, not 10.
+	let paintFlushedLast = 0
+	engine.addSystem(() => {
+		const n = flushDirtyPaintTiles()
+		if (n > 0) paintFlushedLast = n
+	})
+
+	// Perf tick — log flush volume every 5s so we can see whether we're
+	// bottlenecked on paint-write throughput. Only prints when active.
+	let perfLogClock = 0
+	engine.addSystem((dt: number) => {
+		perfLogClock += dt
+		if (perfLogClock < 5) return
+		perfLogClock = 0
+		if (paintFlushedLast === 0) return
+		console.log(`[Perf] last-tick paintTile flush volume: ${paintFlushedLast}`)
+		paintFlushedLast = 0
 	})
 
 	// Periodic leaderboard flush (every 30s if dirty).

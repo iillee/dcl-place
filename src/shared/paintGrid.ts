@@ -35,13 +35,20 @@ export const PAINT_GRID_H    = MAZE_GRID_HEIGHT
 //   3100       PaintCoverage
 //   3101       ServerStats
 //   6000-6255  PaletteEntry
-//   100000+    PaintCell (created on first paint)
+//   100000+    PaintCell (DEPRECATED — unused)
+//   200000+    PaintTile (one per tile)
 export const SEED_NETWORK_ID        = 3000
 export const LEADERBOARD_NETWORK_ID = 3001
 export const PALETTE_NETWORK_BASE   = 6000
 export const COVERAGE_NETWORK_ID    = 3100
 export const STATS_NETWORK_ID       = 3101
 export const CELL_NETWORK_BASE      = 100000
+export const TILE_NETWORK_BASE      = 200000
+
+// MARK: Tile chunk sizing
+// Each PaintTile CRDT entity carries a byte per cell in one (tx, tz, level).
+// PAINT_SIZE² bytes = 256 for a 16×16 tile grid.
+export const PAINT_CELLS_PER_TILE   = PAINT_SIZE * PAINT_SIZE
 
 
 export type CellCoord = {
@@ -182,6 +189,71 @@ export function cellKeyFromNetworkId(entityEnumId: number): number | null {
 }
 
 
+// MARK: packTileKey
+
+/**
+ * Pack (tx, tz, level) into a single Int matching what splitCellKey()
+ * returns as tileKey. Useful when a caller only has tile coords.
+ */
+export function packTileKey(tx: number, tz: number, level: number): number {
+	return level * (PAINT_GRID_W * PAINT_GRID_H) + tz * PAINT_GRID_W + tx
+}
+
+
+// MARK: splitCellKey
+
+/**
+ * Split a packed cell key into (tileKey, localIdx). localIdx is the
+ * intra-tile ordinal (0..PAINT_CELLS_PER_TILE-1, = row * PAINT_SIZE + col).
+ * Relies on packCellKey layout: low log2(PAINT_CELLS_PER_TILE) bits
+ * are the intra-tile ordinal.
+ */
+export function splitCellKey(cellKey: number): { tileKey: number; localIdx: number } {
+	const tileKey  = Math.floor(cellKey / PAINT_CELLS_PER_TILE)
+	const localIdx = cellKey - tileKey * PAINT_CELLS_PER_TILE
+	return { tileKey, localIdx }
+}
+
+
+// MARK: joinCellKey
+
+/** Inverse of splitCellKey. */
+export function joinCellKey(tileKey: number, localIdx: number): number {
+	return tileKey * PAINT_CELLS_PER_TILE + localIdx
+}
+
+
+// MARK: unpackTileKey
+
+/** Inverse of packTileKey. */
+export function unpackTileKey(tileKey: number): { tx: number; tz: number; level: number } {
+	const perLevel = PAINT_GRID_W * PAINT_GRID_H
+	const level    = Math.floor(tileKey / perLevel)
+	const rem      = tileKey - level * perLevel
+	const tz       = Math.floor(rem / PAINT_GRID_W)
+	const tx       = rem - tz * PAINT_GRID_W
+	return { tx, tz, level }
+}
+
+
+// MARK: tileNetworkId
+
+/** Stable syncEntity entityEnumId for a packed tile key. */
+export function tileNetworkId(tileKey: number): number {
+	return TILE_NETWORK_BASE + tileKey
+}
+
+
+// MARK: tileKeyFromNetworkId
+
+/** Reverse of tileNetworkId. Null if outside the paint-tile band. */
+export function tileKeyFromNetworkId(entityEnumId: number): number | null {
+	const key = entityEnumId - TILE_NETWORK_BASE
+	if (key < 0) return null
+	return key
+}
+
+
 // MARK: paintGridCapacity
 
 /** Static capacity stats for logging (no engine dependency). */
@@ -190,7 +262,9 @@ export function paintGridCapacity(): {
 	tiles:                 number
 	levels:                number
 	cellCapacity:          number
+	cellsPerTile:          number
 	cellNetBase:           number
+	tileNetBase:           number
 	paletteNetBase:        number
 } {
 	const levels       = PAINT_MAX_LEVEL + 1
@@ -201,7 +275,9 @@ export function paintGridCapacity(): {
 		tiles,
 		levels,
 		cellCapacity,
+		cellsPerTile:          PAINT_CELLS_PER_TILE,
 		cellNetBase:           CELL_NETWORK_BASE,
+		tileNetBase:           TILE_NETWORK_BASE,
 		paletteNetBase:        PALETTE_NETWORK_BASE,
 	}
 }

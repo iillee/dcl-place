@@ -21,9 +21,26 @@ SeedHolder.create(seedHolder, { seed: 0 })
 // MARK: LeaderboardState
 export const LeaderboardState = engine.defineComponent('leaderboard::state', { json: Schemas.String })
 
-// MARK: PaintCell
+// MARK: PaintCell (DEPRECATED — see PaintTile below)
+// Retained only so any deploy-in-flight clients still statically link the
+// component id without crashing. Server no longer writes it, client no
+// longer reads it. Safe to delete after one full deploy cycle.
 export const PaintCell = engine.defineComponent('paint::cell', {
 	index: Schemas.Byte,
+})
+
+// MARK: PaintTile
+// One CRDT entity per (tx, tz, level) tile carrying a packed byte-array
+// of every cell inside that tile. Replaces the previous 1-entity-per-
+// painted-cell design that overwhelmed the CRDT transport once painted
+// coverage exceeded a few hundred cells. Ported from dcl-snowdrift.
+//
+// cells[localIdx] byte layout for dcl/place:
+//   full byte = palette index (0..MAX_PALETTE_INDEX). 0 = unpainted.
+// Local cell ordinal is `row * PAINT_SIZE + col`, matching
+// paintGrid.splitCellKey()'s intra-tile position.
+export const PaintTile = engine.defineComponent('paint::tile', {
+	cells: Schemas.Array(Schemas.Byte),
 })
 
 // MARK: PaletteEntry
