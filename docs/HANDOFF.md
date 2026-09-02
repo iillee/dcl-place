@@ -4,8 +4,16 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main`
-**Last committed session:** ec1ce31 — "polish(help): tighten panel, gold title accent, indent rules, typo fix"
-**This session:** Mobile HUD overhaul — native on-screen buttons repurposed (E=mute, F=leaderboard, slot3=spectator, slot4=help), top bar hidden on mobile, spectator d-pad + drag re-aligned to the rotated camera (+Z up, +X right), help panel scaled 2× and vertically centered on mobile, leaderboard trimmed to top 10, "click" ready hint on the mobile paint button when cooldown drains, star icon generated for leaderboard slot.
+**Last committed session:** 4b714df — "chore(perf): remove temporary perf HUD, keep chunked-CRDT baseline"
+**This session:** 🚨 **Load-scaling fix.** Migrated the paint CRDT layer from `PaintCell`
+(one CRDT entity per painted pixel) to `PaintTile` (one CRDT entity per tile
+carrying a packed byte array). Ported from dcl-snowdrift. Join hydration cost
+dropped **76×** (5,634 entities → 74) and is now flat forever regardless of
+saturation. Verified in production against the live 5,634 pixel canvas — "much
+much faster" on desktop, smooth on mobile. Zero visual change, zero live-sync
+latency change. Also shipped a dormant paint-storm harness gated by EnvVar for
+future scaling tests, plus a canvas backup/restore workflow (see
+`backups/RESTORE.md`).
 **Deadline:** September 7, 2026
 **Live World:** `dclplace.dcl.eth` — https://decentraland.org/play/?realm=dclplace.dcl.eth
 
@@ -17,7 +25,8 @@ Player walks to a tile → feet-based system resolves the cellId under the
 avatar → colored highlight cube previews the pending placement in the
 selected color → tap the **paint button** (or press **F**) → client sends
 `placePixel` → server enforces **1s** cooldown → applies paint → CRDT
-`PaintCell.index` broadcasts to every connected client → tile recolors.
+the tile's `PaintTile.cells` byte array is republished on the next server tick
+→ every connected client diffs vs. its shadow and recolors only the changed cells.
 Server persists the canvas to Storage every 30s; on next boot every pixel
 is restored before the first client connects.
 
@@ -27,7 +36,7 @@ Concretely working:
 - Server-side **1s** cooldown per wallet address (was 3s, tuned down this session)
 - **Feet-based placement** with airborne gate (jump/glide hides the preview and blocks placement)
 - **Highlight cube** sitting flush with the tile plane, full-color face + black wireframe edges
-- Sparse `PaintCell` CRDT (only painted cells cost anything)
+- **Chunked `PaintTile` CRDT** (100 tile entities, one byte per cell, dirty-flush per tick). Migration completed 2026-09-02; see "Chunked PaintTile CRDT" session below.
 - **Canvas persistence to `Storage`** — 30s dirty-flush, single compact blob, hydrated at boot before any client connects
 - **Live leaderboard** — server publishes top-20 on a throttled 1s dirty tick (~150 KB/s at 100 concurrent players, cap-safe)
 - **Blank tiles render as `#EAEAEA` light grey** so palette-white is visually distinct
@@ -51,7 +60,70 @@ Active state = warm gold accent. Leaderboard and Help slide down from the top-ce
 
 ---
 
-## 🆕 Latest session — Mobile HUD overhaul
+## 🆕 Latest session — Chunked PaintTile CRDT (load-scaling fix)
+
+### The problem
+Original design used one `PaintCell` CRDT entity per painted pixel. At ~5,500
+pixels this became the mobile load bottleneck; at 100% saturation (25,600
+pixels) the model would have collapsed. The DESIGN doc's own Phase 8 plan
+assumed chunked persistence was optional; it turns out chunked *runtime state*
+is the actual bottleneck.
+
+### The fix
+One `PaintTile` CRDT entity per (tx, tz, level) tile. `cells: Schemas.Array(Schemas.Byte)`,
+256 bytes per tile (16×16 grid), one palette-index byte per cell. Dirty tiles
+flush once per server tick via `flushDirtyPaintTiles()`. Client keeps a per-tile
+shadow byte buffer and diffs incoming CRDT payloads against it, dispatching
+`applyPaintIndex` only on changed bytes. The whole hot path (per-pixel render
+entities, feet preview, paint UX, Discord snapshot, cooldown) is unchanged —
+only the network representation of paint state moved.
+
+Canvas Storage blob format (`dcl-place:canvas:v1`) is unchanged; existing pixels
+hydrate transparently into the new format via `hydratePaintCell` → `writeCellByte`.
+
+### Files
+- `src/shared/components.ts` — added `PaintTile`, kept `PaintCell` as deprecated shim for one deploy cycle
+- `src/shared/paintGrid.ts` — added `PAINT_CELLS_PER_TILE`, `TILE_NETWORK_BASE`, `packTileKey`, `splitCellKey`, `joinCellKey`, `tileNetworkId`, `tileKeyFromNetworkId`
+- `src/shared/paintSync.ts` — rewrote for chunked writes: `ensurePaintTileEntity`, `writeCellByte`, `flushDirtyPaintTiles`, `zeroAllPaintTiles`
+- `src/server/paintState.ts` — `writeCellIndex` routes through `writeCellByte`; `cellIndex` Map preserved so Discord snapshot / canvasStorage still work unchanged
+- `src/server/server.ts` — `flushDirtyPaintTiles()` runs once per engine tick; `[Perf]` log line replaces per-cell heartbeat
+- `src/client/paint.ts` — `syncCellsFromCrdt` iterates `getEntitiesWith(PaintTile)`, diffs vs. per-tile shadow, dispatches only on byte flips
+- `src/server/serverStats.ts` — reports `paintTileEntityCount` instead of `paintCellEntityCount`
+
+### Paint-storm harness (dormant in prod, on-demand for stress tests)
+- `src/server/debugStorm.ts` — gated by EnvVar `DCL_PLACE_ALLOW_STORM=="1"`. Fill/random/clear modes, amortized 500 cells/tick, progress + throughput logs.
+- New `debugStorm { target, mode }` room message.
+- To re-enable for a future scaling test: `npx sdk-commands storage env set DCL_PLACE_ALLOW_STORM --value "1"` on the target World. Delete when done.
+- Client-side trigger is currently no-op (perf HUD deleted after validation). Re-add a temporary HUD from git history (commit `79c155d`) if you want interactive buttons again.
+
+### Backup / restore workflow
+- `backups/` dir gitignored; holds dated snapshots of `dcl-place:canvas:v1`.
+- Pre-migration backup: `backups/canvas-20260902-162101.txt` (5,634 pixels, 33KB).
+- Restore procedure: `backups/RESTORE.md`.
+- Backup command: `npx sdk-commands storage scene get "dcl-place:canvas:v1" > backups/raw-XXXXX.log 2>&1`.
+
+### Perf measurements (local, 100% saturation, 25,600 pixels)
+- CRDT hydration: **274 ms** for a fully-saturated canvas
+- CRDT total bytes over the wire: ~25 KB (100 tiles × 256 bytes)
+- Server storm throughput: ~15,000 paints/sec (4 orders of magnitude over organic)
+- Desktop FPS after hydration: 39.6 (25,600 mesh entities — unrelated to CRDT, this is the render ceiling)
+- Storage blob size at 100%: 152 KB
+
+### Production numbers (dclplace.dcl.eth, ~22% saturation)
+- `hydrated 5634 cells (skipped 0), blob 33339B`
+- 74 tile CRDT entities in memory (vs. 5,634 before)
+- Subjective: "much much faster" (desktop), smooth on mobile
+- Phase 3 (texture-bake LOD) is NOT needed for the current canvas
+
+### Known caveat
+Render-side cost is still linear in painted pixels (one plane entity per pixel).
+At saturation that's 25,600 planes; desktop handles it, mobile handles it, but
+if we ever move to a 32×32-per-tile canvas (102,400 pixels) we'd want to revisit
+with Phase 3. For now this is documented and shelved.
+
+---
+
+## Previous session — Mobile HUD overhaul
 
 ### Native mobile on-screen buttons (`src/client/touchControls.ts` — new)
 Reshapes DCL's fixed native button cluster via `TouchScreenControls`. Requires SDK 7.26.0+. No-op on desktop.
@@ -241,7 +313,7 @@ src/shared/
   settings.ts            PAINT_COOLDOWN_MS = 1000
   paintGrid.ts           cellId <-> cellKey (uint32) math
   paintSync.ts           syncEntity wiring (server-only writes)
-  components.ts          PaintCell, PaletteEntry, PaintCoverage, LeaderboardState
+  components.ts          PaintTile (packed byte array/tile), PaletteEntry, PaintCoverage, LeaderboardState
   maze/                  tile/level generation
 src/server/
   server.ts              handlers + cooldown map + 30s canvas flush + 1s leaderboard tick + snapshot auto-tick
@@ -273,7 +345,7 @@ src/client/
 ### Key contracts
 - **Client → Server:** `placePixel { cellId, paletteIndex: 1..8 }`, `requestLeaderboard {}` (fired once on panel open), `updateName { name }`, `joinRoster { userId }`
 - **Server → Client (addressed):** `cooldownAck { accepted, nextAllowedAt, serverNow }`
-- **Sync (CRDT, server-owned):** `PaintCell.index` (byte), `PaletteEntry.color`, `PaintCoverage`, `LeaderboardState.json`
+- **Sync (CRDT, server-owned):** `PaintTile.cells` (byte-array, one per tile, dirty-flushed per tick), `PaletteEntry.color`, `PaintCoverage`, `LeaderboardState.json`
 - **Server clock trust:** client stores `serverSkewMs = serverNow - Date.now()` from every ack.
 
 ---
