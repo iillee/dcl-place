@@ -17,3 +17,4 @@ node_modules/@dcl/sdk-commands/.runtime-data/
 
 # canvas state backups (large, volatile, dated)
 backups/
+backups/raw-*.log

@@ -17,8 +17,6 @@ import { topBarLayer }      from 'src/client/ui/layers/layer.topBar'
 import { topDownPanLayer }  from 'src/client/ui/layers/layer.topDownPan'
 import { versionLayer }        from 'src/client/ui/layers/layer.version'
 import { loadingSplashLayer }  from 'src/client/ui/layers/layer.loadingSplash'
-// TEMPORARY — perf HUD for the chunked-CRDT rollout. Remove once validated.
-import { perfHudLayer }        from 'src/client/ui/layers/layer.perfHud'
 
 
 // MARK: setupUi
@@ -35,8 +33,6 @@ export function setupUi() {
 			helpPanelLayer,
 			leaderboardLayer,
 			colorPickerLayer,
-			// TEMPORARY — perf HUD. Delete after chunked-CRDT validation.
-			perfHudLayer,
 			// Splash must be last so it renders on top of every other layer.
 			loadingSplashLayer,
 		],
