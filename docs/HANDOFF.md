@@ -4,16 +4,18 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main`
-**Last committed session:** 4b714df — "chore(perf): remove temporary perf HUD, keep chunked-CRDT baseline"
-**This session:** 🚨 **Load-scaling fix.** Migrated the paint CRDT layer from `PaintCell`
-(one CRDT entity per painted pixel) to `PaintTile` (one CRDT entity per tile
-carrying a packed byte array). Ported from dcl-snowdrift. Join hydration cost
-dropped **76×** (5,634 entities → 74) and is now flat forever regardless of
-saturation. Verified in production against the live 5,634 pixel canvas — "much
-much faster" on desktop, smooth on mobile. Zero visual change, zero live-sync
-latency change. Also shipped a dormant paint-storm harness gated by EnvVar for
-future scaling tests, plus a canvas backup/restore workflow (see
-`backups/RESTORE.md`).
+**Last committed session:** fabe751 — "feat(ux): welcome flow, mobile UI polish, timelapse downloader"
+**This session:** 🎨 **First-run UX + mobile polish + Discord timelapse pipeline.**
+Onboarding now hands new players an overhead view of the canvas the moment
+the splash clears, with the help panel already open — one tap dismisses it
+and drops them into play. Mobile UI got a real pass: help panel copy rewritten
+with an inline eye icon, leaderboard scaled 1.4× for legibility, both panels
+close on any tap (fixed the react-ecs rich-text hitbox bug via a full-panel
+tap-catcher overlay), audio feedback added to swatch selection + zoom, and
+CRDT-hydration pops muted via a 3s grace window. Shipped a Discord-bot
+timelapse download + ffmpeg encoder in `scripts/download-timelapse.mjs`
+(the snapshot channel is the source of truth for frames). Previous session
+(chunked-CRDT load-scaling fix) history preserved below.
 **Deadline:** September 7, 2026
 **Live World:** `dclplace.dcl.eth` — https://decentraland.org/play/?realm=dclplace.dcl.eth
 
@@ -60,7 +62,94 @@ Active state = warm gold accent. Leaderboard and Help slide down from the top-ce
 
 ---
 
-## 🆕 Latest session — Chunked PaintTile CRDT (load-scaling fix)
+## 🆕 Latest session — Welcome flow, mobile UX, timelapse downloader
+
+### Welcome flow (`src/client/index.ts`)
+- On scene entry, after a 3s grace (splash clears at ~2.5s), auto-activate
+  spectator/overhead camera and auto-open the help panel. First tap on
+  the panel dismisses it → player is in overhead view exploring the canvas.
+- Runs exactly once per scene entry (`welcomeDone` latch).
+- Mobile default spectator altitude bumped 30 → 50 (two `CAM_ALTITUDE_STEP`
+  = 10m out) so the initial overhead view frames more of the canvas.
+
+### Help panel (`src/client/ui/layers/layer.helpPanel.tsx`)
+- Line 3 rewritten with an **inline eye icon** (`assets/images/eye.png`,
+  same PNG as the top-bar spectator button, white-tinted, sized 27×18 desktop
+  / 54×36 mobile). Row uses explicit widths + `flexShrink:0` + `flexWrap:nowrap`
+  so it doesn't wrap or leave gaps at narrow viewports.
+- Copy: 1. select a color from the pallete · 2. place pixels to make art ·
+  3. click the [eye] to toggle view.
+- Mobile spacing: title bottom-margin 8 → 40 (extra line break under title);
+  rule gap 8 → 14; panel height 320 → 370; version chip pinned to bottom via
+  `flexGrow:1` spacer entity (avoids the `margin: { top: 'auto' }` TS gotcha).
+
+### Leaderboard (`src/client/ui/layers/layer.leaderboard.tsx`)
+- Mobile scale factor `s = 1.4` applied to width, height, fonts, padding,
+  row heights, column widths (all proportional; 10 rows still fit in 720px).
+- Mobile top-positioned via `(720 - panelH) / 2 - 50` so the bottom edge
+  lines up with the help panel's bottom edge for consistent open/close feel.
+
+### Close-on-tap for both panels
+- Bold grey `✖` in the top-**right** corner as visual affordance (desktop
+  uses plain `✖` U+2716; mobile uses `<b>✖</b>` for extra weight against
+  touch-screen glare).
+- **Any tap anywhere on the panel closes it** on both platforms.
+- Implementation: full-panel absolute-positioned invisible overlay rendered
+  as the **last** child of the panel body — sits on top in z-order and
+  absorbs every tap. Root `onMouseDown` removed to avoid double-firing.
+- **Why the overlay is needed:** rich-text child UiEntities silently absorb
+  taps that would otherwise reach the parent handler (see
+  `dcl-snowdrift/docs/bug-reports/react-ecs-richtext-hitbox-mismatch.md`).
+  Without the overlay, closing took 2-3 taps because the `<b>...</b>` and
+  `<color=...>` markup shifted hit regions. Overlay bypasses the whole mess.
+
+### Audio (`src/client/audio.ts`, `paint.ts`, `topDownCamera.ts`, `layer.colorPicker.tsx`)
+- `playUiClick()` now sets `currentTime: 0` on `createOrReplace` so rapid
+  re-triggers restart cleanly (was silently no-op'ing on back-to-back calls).
+- **Swatch tap** plays UI click on every selection change (removed the
+  stale-`isSelected` guard that was silently blocking on mobile).
+- **Zoom in/out** now play UI click when altitude actually changes (silent
+  at min/max clamp). Moved from the button handler into `zoomIn`/`zoomOut`
+  themselves so any future call site gets the feedback automatically.
+- **Tile-load pop suppression:** the `paintHydrated` flag now unlocks live
+  `playClaimSfx()` only after a 3s grace window past the first tile arrival.
+  Previously flipped on the very first tile — subsequent tiles in the
+  hydration burst each fired pops. Formula:
+  `paintHydrated && (Date.now() - firstTileAtMs > HYDRATION_SFX_GRACE_MS)`.
+
+### Chrome cleanup
+- **Removed on-screen version chip** from `src/client/ui/index.tsx` (the
+  chip inside the help panel still shows it). `layer.version.tsx` file
+  kept in-tree for now in case we want it back.
+- Leaderboard header reverted to `TOP 10 PAINTERS` (was briefly
+  `MOST VALUABLE PAINTERS`).
+
+### Timelapse pipeline (`scripts/`)
+- **`scripts/download-timelapse.mjs`** — Discord bot reads the snapshot
+  channel, downloads every PNG attachment oldest-first into
+  `timelapse/frames/`, then invokes ffmpeg to stitch `timelapse.mp4`.
+  Flags: `--skip-download`, `--skip-encode`, `--fps N`, `--limit N`,
+  `--after <ISO>`, `--renumber` (closes gaps after manual frame deletion
+  so ffmpeg's `%06d.png` pattern doesn't stop early). Safe to re-run
+  (resumes from cache).
+- **`scripts/debug-channel.mjs`** — dumps the last 5 messages so you can
+  smoke-test bot permissions before running the big download.
+- **Bot setup gotcha:** the bot needs **Message Content Intent** enabled
+  in the Discord Developer Portal to see `attachments`/`content`/`embeds`
+  even via REST. Without it messages read as blank.
+- **`.env`** additions: `DISCORD_BOT_TOKEN`, `DISCORD_SNAPSHOT_CHANNEL_ID`
+  (channel `1544096531345317979` = `#images`).
+- `timelapse/` output directory added to `.gitignore` (frames + rendered
+  video regenerate from the Discord archive on demand).
+
+### Known caveat / open item
+- Client-side hot-reload during preview didn't consistently pick up audio
+  changes; had to fully quit + restart Explorer to see the swatch click
+  and hydration-pop fixes. Preview caching quirk, not a scene bug.
+
+---
+
+## Previous session — Chunked PaintTile CRDT (load-scaling fix)
 
 ### The problem
 Original design used one `PaintCell` CRDT entity per painted pixel. At ~5,500

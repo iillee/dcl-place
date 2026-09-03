@@ -93,7 +93,7 @@ class HelpPanelLayer extends Layer {
 						height      : 36 * s,
 					}}
 					uiText = {{
-						value    : '<b>✖</b>',
+						value    : mobile ? '<b>✖</b>' : '✖',
 						fontSize : 32 * s,
 						color    : Color4.create(0.6, 0.6, 0.6, 1),
 						textAlign: 'middle-center',
