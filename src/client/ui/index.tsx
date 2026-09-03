@@ -15,7 +15,6 @@ import { helpPanelLayer }   from 'src/client/ui/layers/layer.helpPanel'
 import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 import { topBarLayer }      from 'src/client/ui/layers/layer.topBar'
 import { topDownPanLayer }  from 'src/client/ui/layers/layer.topDownPan'
-import { versionLayer }        from 'src/client/ui/layers/layer.version'
 import { loadingSplashLayer }  from 'src/client/ui/layers/layer.loadingSplash'
 
 
@@ -24,7 +23,6 @@ export function setupUi() {
 	SetupUiComponentKit({
 		layers: [
 			// Order = z-order (later draws on top).
-			versionLayer,
 			// Spectator pan controls sit below chrome so its full-screen
 			// drag catcher doesn't swallow taps meant for the top bar
 			// or bottom picker.

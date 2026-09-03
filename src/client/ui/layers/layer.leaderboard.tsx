@@ -82,16 +82,28 @@ class LeaderboardLayer extends Layer {
 		if (!Array.isArray(entries)) entries = []
 
 		const mobile = isMobile()
-		const top    = (mobile ? BAR_TOP_MB : BAR_TOP_DT) + BTN_SIZE + GAP_BELOW
+		// Match the help panel's mobile scaling so text sizes line up.
+		// s = 1.8 (slightly under 2) keeps 10 rows fitting comfortably in the
+		// 720px virtual screen height.
+		const s        = mobile ? 1.4 : 1
+		const panelW   = PANEL_W * s
+		const rowH     = ROW_H * s
+		const headerH  = HEADER_H * s
+		const vPad     = V_PAD * s
+		const hPad     = 14 * s
+		const panelH   = headerH + MAX_ROWS * rowH + vPad * 2 + 8 * s
+		const top      = mobile
+			? Math.max(0, (720 - panelH) / 2 - 50)
+			: BAR_TOP_DT + BTN_SIZE + GAP_BELOW
 
 		return (
 			<UiEntity
 				key         = "ui_Leaderboard_root"
 				uiTransform = {{
-					width         : PANEL_W,
-					height        : PANEL_H,
+					width         : panelW,
+					height        : panelH,
 					margin        : { top },
-					padding       : { top: V_PAD, bottom: V_PAD, left: 14, right: 14 },
+					padding       : { top: vPad, bottom: vPad, left: hPad, right: hPad },
 					borderRadius  : borderRadius.md,
 					borderWidth   : 4,
 					borderColor   : Color4.create(1, 1, 1, 0.75),
@@ -100,13 +112,34 @@ class LeaderboardLayer extends Layer {
 					justifyContent: 'flex-start',
 				}}
 				uiBackground = {{ color: colors.statsBg }}
+				// Tap-to-close is handled by an absolute-positioned overlay child
+				// rendered LAST (see bottom of tree). Root handler removed to avoid
+				// double-firing.
+
 			>
+				{/* Close X — top-right corner. Bold grey glyph, taps to close the panel. */}
+				<UiEntity
+					key         = "ui_Leaderboard_close"
+					uiTransform = {{
+						positionType: 'absolute',
+						position    : { right: 8 * s, top: 4 * s },
+						width       : 36 * s,
+						height      : 36 * s,
+					}}
+					uiText = {{
+						value    : '<b>✖</b>',
+						fontSize : 32 * s,
+						color    : Color4.create(0.6, 0.6, 0.6, 1),
+						textAlign: 'middle-center',
+					}}
+				/>
+
 				{/* Header */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: HEADER_H, margin: { bottom: 8 } }}
+					uiTransform = {{ width: '100%', height: headerH, margin: { bottom: 8 * s } }}
 					uiText = {{
 						value    : '<b>TOP 10 PAINTERS</b>',
-						fontSize : 22,
+						fontSize : 22 * s,
 						color    : GOLD,
 						textAlign: 'middle-center',
 					}}
@@ -114,9 +147,25 @@ class LeaderboardLayer extends Layer {
 
 				{/* Rows */}
 				{entries.length === 0
-					? renderEmpty()
-					: entries.slice(0, MAX_ROWS).map((e, i) => renderRow(i + 1, e))
+					? renderEmpty(s)
+					: entries.slice(0, MAX_ROWS).map((e, i) => renderRow(i + 1, e, s))
 				}
+
+				{/* Full-panel invisible tap-catcher — rendered LAST so it sits on
+				   top in z-order and absorbs every tap that would otherwise be
+				   eaten by rich-text child UiEntities (see
+				   dcl-snowdrift/docs/bug-reports/react-ecs-richtext-hitbox-mismatch.md). */}
+				<UiEntity
+					key         = "ui_Leaderboard_tapCatcher"
+					uiTransform = {{
+						positionType: 'absolute',
+						position    : { left: 0, top: 0, right: 0, bottom: 0 },
+						width       : '100%',
+						height      : '100%',
+					}}
+					uiBackground = {{ color: Color4.create(0, 0, 0, 0) }}
+					onMouseDown  = {() => { playUiClick(); toggleLeaderboard() }}
+				/>
 			</UiEntity>
 		)
 	}
@@ -124,47 +173,49 @@ class LeaderboardLayer extends Layer {
 
 
 // MARK: renderRow
-function renderRow(rank: number, e: LbEntry) {
+function renderRow(rank: number, e: LbEntry, s: number) {
 	const rankColor = rank === 1 ? GOLD
 	                : rank === 2 ? Color4.create(0.85, 0.85, 0.90, 1)
 	                : rank === 3 ? Color4.create(0.90, 0.60, 0.35, 1)
 	                : DIM
+	const rowH = ROW_H * s
+	const rowFontSize = fontSizes.md * s
 	return (
 		<UiEntity
 			key         = {`ui_Lb_row_${rank}_${e.userId}`}
 			uiTransform = {{
 				width        : '100%',
-				height       : ROW_H,
+				height       : rowH,
 				flexDirection: 'row',
 				alignItems   : 'center',
 			}}
 		>
 			{/* Rank */}
 			<UiEntity
-				uiTransform = {{ width: 34, height: ROW_H }}
+				uiTransform = {{ width: 34 * s, height: rowH }}
 				uiText = {{
 					value    : `<b>${rank}</b>`,
-					fontSize : fontSizes.md,
+					fontSize : rowFontSize,
 					color    : rankColor,
 					textAlign: 'middle-left',
 				}}
 			/>
 			{/* Name */}
 			<UiEntity
-				uiTransform = {{ width: 190, height: ROW_H }}
+				uiTransform = {{ width: 190 * s, height: rowH }}
 				uiText = {{
 					value    : truncate(e.name || e.userId, 20),
-					fontSize : fontSizes.md,
+					fontSize : rowFontSize,
 					color    : WHITE,
 					textAlign: 'middle-left',
 				}}
 			/>
 			{/* Count */}
 			<UiEntity
-				uiTransform = {{ width: 68, height: ROW_H }}
+				uiTransform = {{ width: 68 * s, height: rowH }}
 				uiText = {{
 					value    : String(e.cellsPainted | 0),
-					fontSize : fontSizes.md,
+					fontSize : rowFontSize,
 					color    : GOLD,
 					textAlign: 'middle-right',
 				}}
@@ -175,14 +226,14 @@ function renderRow(rank: number, e: LbEntry) {
 
 
 // MARK: renderEmpty
-function renderEmpty() {
+function renderEmpty(s: number) {
 	return (
 		<UiEntity
 			key         = "ui_Lb_empty"
-			uiTransform = {{ width: '100%', height: ROW_H * 2 }}
+			uiTransform = {{ width: '100%', height: ROW_H * s * 2 }}
 			uiText = {{
 				value    : 'No pixels painted yet.',
-				fontSize : fontSizes.md,
+				fontSize : fontSizes.md * s,
 				color    : DIM,
 				textAlign: 'middle-center',
 			}}

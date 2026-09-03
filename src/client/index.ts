@@ -30,8 +30,9 @@ import { setupUi } from 'src/client/ui'
 import { setupTopDownCamera } from 'src/client/topDownCamera'
 import { setupTouchControls } from 'src/client/touchControls'
 import { dragPollSystem } from 'src/client/ui/layers/layer.topDownPan'
-import { initHelpPanelHotkey } from 'src/client/ui/layers/layer.helpPanel'
+import { initHelpPanelHotkey, helpPanelLayer } from 'src/client/ui/layers/layer.helpPanel'
 import { initLeaderboardHotkey } from 'src/client/ui/layers/layer.leaderboard'
+import { isTopDownActive, toggleTopDownCamera } from 'src/client/topDownCamera'
 
 
 // ─── Seed watcher ───────────────────────────────────────────────────
@@ -120,4 +121,22 @@ export async function setupClient(): Promise<void> {
 	setupTopDownCamera()
 
 	setupUi()
+
+	// ─── Welcome flow ──────────────────────────────────────────────────────
+	// After the load splash clears (~3s), auto-activate spectator camera
+	// so first-time players immediately see the canvas from above, and
+	// auto-open the help panel so they know what to do. First tap closes
+	// the help panel (see layer.helpPanel onMouseDown) and they're playing.
+	// Runs once per scene entry only.
+	let welcomeTimer = 0
+	let welcomeDone  = false
+	const WELCOME_DELAY = 3.0 // seconds after boot
+	engine.addSystem((dt: number) => {
+		if (welcomeDone) return
+		welcomeTimer += dt
+		if (welcomeTimer < WELCOME_DELAY) return
+		welcomeDone = true
+		if (!isTopDownActive()) toggleTopDownCamera()
+		if (helpPanelLayer.visibility.isHidden) helpPanelLayer.show()
+	})
 }

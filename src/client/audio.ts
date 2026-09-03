@@ -72,9 +72,14 @@ export function isMusicMuted(): boolean {
  */
 export function playUiClick(): void {
   if (!muteClickEnt) return
+  // currentTime: 0 forces the source to restart on rapid re-triggers.
+  // Without it, calling createOrReplace with the same clip URL back-to-back
+  // (e.g. tapping through several swatches quickly on mobile) silently
+  // no-ops instead of re-playing.
   AudioSource.createOrReplace(muteClickEnt, {
     audioClipUrl: CLICK_SRC,
     playing: true, loop: false, volume: 0.5, global: true,
+    currentTime: 0,
   })
 }
 

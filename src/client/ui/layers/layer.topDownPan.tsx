@@ -239,7 +239,8 @@ function ZoomButton(props: {
 			uiBackground={{ color: bg }}
 			onMouseDown={() => {
 				if (!props.enabled) return
-				playUiClick()
+				// zoomIn / zoomOut fire playUiClick internally when the
+				// altitude actually changes (i.e. not at min/max clamp).
 				if (props.kind === 'in') zoomIn()
 				else                     zoomOut()
 			}}

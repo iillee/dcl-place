@@ -35,7 +35,7 @@ const CENTER_Z = SCENE_WORLD_SIZE_Z_METERS / 2
 // altitude so players start with a pixel-scale view; wheel/pinch out to
 // see the whole board.
 const CAM_ALTITUDE_DESKTOP_DEFAULT = 50
-const CAM_ALTITUDE_MOBILE_DEFAULT  = 30
+const CAM_ALTITUDE_MOBILE_DEFAULT  = 50
 const CAM_ALTITUDE_DEFAULT         = isMobile() ? CAM_ALTITUDE_MOBILE_DEFAULT : CAM_ALTITUDE_DESKTOP_DEFAULT
 const CAM_ALTITUDE_MIN             = 20
 // Mobile caps at the lowest 5 zoom steps (20/30/40/50/60) — higher
@@ -283,16 +283,20 @@ export function getDpadSpeed(): number {
 // MARK: zoomIn
 export function zoomIn(): void {
 	if (!active) return
+	const prev = currentAltitude
 	const next = currentAltitude - CAM_ALTITUDE_STEP
 	currentAltitude = next < CAM_ALTITUDE_MIN ? CAM_ALTITUDE_MIN : next
+	if (currentAltitude !== prev) playUiClick()
 }
 
 
 // MARK: zoomOut
 export function zoomOut(): void {
 	if (!active) return
+	const prev = currentAltitude
 	const next = currentAltitude + CAM_ALTITUDE_STEP
 	currentAltitude = next > CAM_ALTITUDE_MAX ? CAM_ALTITUDE_MAX : next
+	if (currentAltitude !== prev) playUiClick()
 }
 
 

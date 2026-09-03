@@ -194,7 +194,15 @@ function syncCellsFromCrdt(): void {
 	observedTiles     = tileCount
 	observedPaintedPx = totalPainted
 
-	if (anyChange && paintHydrated) playClaimSfx()
+	// Grace window after first tile arrives — CRDT hydration trickles in
+	// over many frames, so if we flipped paintHydrated on the first tile
+	// every subsequent hydration byte would pop. Wait until the burst is
+	// done (3s past first tile) before allowing live-paint SFX.
+	const HYDRATION_SFX_GRACE_MS = 3000
+	const hydrationSettled = paintHydrated
+		&& firstTileAtMs !== null
+		&& Date.now() - firstTileAtMs > HYDRATION_SFX_GRACE_MS
+	if (anyChange && hydrationSettled) playClaimSfx()
 	if (!paintHydrated && tileCount > 0) {
 		paintHydrated     = true
 		lastHydrationAtMs = Date.now()

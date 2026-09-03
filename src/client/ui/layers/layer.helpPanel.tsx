@@ -56,7 +56,9 @@ class HelpPanelLayer extends Layer {
 		const width    = PANEL_W * s
 		// Mobile height tightened (content fits in ~320px at 2× scale;
 		// PANEL_H×2 = 400 left extra padding at the bottom).
-		const height   = mobile ? 320 : PANEL_H
+		const height   = mobile ? 370 : PANEL_H
+		// Extra vertical breathing room between the three rule lines on mobile.
+		const ruleGap  = mobile ? 14 : 4 * s
 		const top      = mobile
 			? Math.max(0, (720 - height) / 2)
 			: BAR_TOP_DT + BTN_SIZE + GAP_BELOW_BAR_PX
@@ -76,10 +78,31 @@ class HelpPanelLayer extends Layer {
 					justifyContent: 'flex-start',
 				}}
 				uiBackground = {{ color: colors.statsBg }}
+				// Tap-to-close is handled by an absolute-positioned overlay child
+				// rendered LAST (see bottom of tree). Root handler removed to avoid
+				// double-firing.
+
 			>
+				{/* Close X — top-right corner. Bold grey glyph, taps to close the panel. */}
+				<UiEntity
+					key         = "ui_HelpPanel_close"
+					uiTransform = {{
+						positionType: 'absolute',
+						position    : { right: 8 * s, top: 4 * s },
+						width       : 36 * s,
+						height      : 36 * s,
+					}}
+					uiText = {{
+						value    : '<b>✖</b>',
+						fontSize : 32 * s,
+						color    : Color4.create(0.6, 0.6, 0.6, 1),
+						textAlign: 'middle-center',
+					}}
+				/>
+
 				{/* Title */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 32 * s, margin: { bottom: 8 * s } }}
+					uiTransform = {{ width: '100%', height: 32 * s, margin: { bottom: mobile ? 40 : 8 } }}
 					uiText = {{
 						value    : '<b>welcome to <color=#ffcc4d>dclplace</color>!</b>',
 						fontSize : 24 * s,
@@ -90,7 +113,7 @@ class HelpPanelLayer extends Layer {
 
 				{/* Rules — three concise lines */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: 4 * s, left: 16 * s } }}
+					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: ruleGap, left: 16 * s } }}
 					uiText = {{
 						value    : '<b><color=#ffcc4d>1.</color></b>  select a color from the pallete',
 						fontSize : 18 * s,
@@ -99,23 +122,58 @@ class HelpPanelLayer extends Layer {
 					}}
 				/>
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: 4 * s, left: 16 * s } }}
+					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: ruleGap, left: 16 * s } }}
 					uiText = {{
-						value    : '<b><color=#ffcc4d>2.</color></b>  place 1 pixel every 1 second',
+						value    : '<b><color=#ffcc4d>2.</color></b>  place pixels to make art',
 						fontSize : 18 * s,
 						color    : WHITE,
 						textAlign: 'middle-left',
 					}}
 				/>
+				{/* Line 3 — inline eye icon (same PNG as the spectator button, tinted white).
+				   Explicit pixel widths + flexShrink:0 + flexWrap:nowrap prevent the row
+				   from collapsing/wrapping when the viewport is narrow. */}
 				<UiEntity
-					uiTransform = {{ width: '100%', height: 26 * s, margin: { bottom: 12 * s, left: 16 * s } }}
-					uiText = {{
-						value    : '<b><color=#ffcc4d>3.</color></b>  make art',
-						fontSize : 18 * s,
-						color    : WHITE,
-						textAlign: 'middle-left',
+					uiTransform = {{
+						width         : '100%',
+						height        : 26 * s,
+						margin        : { bottom: ruleGap, left: 16 * s },
+						flexDirection : 'row',
+						flexWrap      : 'nowrap',
+						alignItems    : 'center',
+						justifyContent: 'flex-start',
 					}}
-				/>
+				>
+					<UiEntity
+						uiTransform = {{ width: mobile ? 190 : 110, height: '100%', flexShrink: 0 }}
+						uiText = {{
+							value    : '<b><color=#ffcc4d>3.</color></b>  click the',
+							fontSize : 18 * s,
+							color    : WHITE,
+							textAlign: 'middle-left',
+						}}
+					/>
+					<UiEntity
+						uiTransform = {{ width: 27 * s, height: 18 * s, margin: { left: 4 * s, right: 8 * s }, flexShrink: 0 }}
+						uiBackground = {{
+							textureMode: 'stretch',
+							texture    : { src: 'assets/images/eye.png' },
+							color      : WHITE,
+						}}
+					/>
+					<UiEntity
+						uiTransform = {{ width: 200 * s, height: '100%', flexShrink: 0 }}
+						uiText = {{
+							value    : 'to toggle view',
+							fontSize : 18 * s,
+							color    : WHITE,
+							textAlign: 'middle-left',
+						}}
+					/>
+				</UiEntity>
+
+				{/* Flex spacer — pushes the version chip to the bottom of the panel. */}
+				<UiEntity uiTransform={{ width: '100%', height: 0, flexGrow: 1 }} />
 
 				{/* Version chip */}
 				<UiEntity
@@ -143,6 +201,23 @@ class HelpPanelLayer extends Layer {
 						uiBackground = {{ color: colors.versionBg }}
 					/>
 				</UiEntity>
+
+				{/* Full-panel invisible tap-catcher — rendered LAST so it sits on
+				   top in z-order and absorbs every tap that would otherwise be
+				   eaten by rich-text child UiEntities (see
+				   dcl-snowdrift/docs/bug-reports/react-ecs-richtext-hitbox-mismatch.md).
+				   Transparent background so the panel content still shows through. */}
+				<UiEntity
+					key         = "ui_HelpPanel_tapCatcher"
+					uiTransform = {{
+						positionType: 'absolute',
+						position    : { left: 0, top: 0, right: 0, bottom: 0 },
+						width       : '100%',
+						height      : '100%',
+					}}
+					uiBackground = {{ color: Color4.create(0, 0, 0, 0) }}
+					onMouseDown  = {() => { playUiClick(); toggleHelpPanel() }}
+				/>
 			</UiEntity>
 		)
 	}

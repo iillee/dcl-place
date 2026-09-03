@@ -16,6 +16,8 @@ import { Color4 } from '@dcl/sdk/math'
 import { engine } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
 
+import { playUiClick } from 'src/client/audio'
+
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
 
 import { PLACE_PALETTE } from 'src/shared/palette'
@@ -319,7 +321,11 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 				borderColor : isSelected ? selBorder : undefined,
 			}}
 			uiBackground = {{ color }}
-			onMouseDown  = {() => setSelectedPaletteIndex(paletteIndex)}
+			onMouseDown  = {() => {
+				// Play the UI click on every swatch tap for consistent feedback.
+				playUiClick()
+				setSelectedPaletteIndex(paletteIndex)
+			}}
 		>
 			{/* Desktop key hint — `E` cycles palette. Only shown on the
 			   selected swatch; flips to black on the white swatch so it
