@@ -23,6 +23,7 @@ import { playUiClick } from 'src/client/audio'
 import { room } from 'src/shared/messages'
 import { UI_THEME } from 'src/client/ui/theme/settings'
 import { readLeaderboard, LbEntry } from 'src/client/ui/utils/leaderboard'
+import { paintedCount, totalCellCount } from 'src/client/paint'
 import { helpPanelLayer } from 'src/client/ui/layers/layer.helpPanel'
 
 
@@ -47,7 +48,7 @@ const GAP_BELOW  = 16
 
 
 // MARK: LeaderboardLayer
-type LbProps = { json: string }
+type LbProps = { json: string; painted: number; total: number }
 
 class LeaderboardLayer extends Layer {
 
@@ -60,7 +61,7 @@ class LeaderboardLayer extends Layer {
 			showFrom   : 'top',
 		})
 
-		this.props = new PropsController<LbProps>({ json: '[]' })
+		this.props = new PropsController<LbProps>({ json: '[]', painted: 0, total: 0 })
 
 		// Mirror the replicated CRDT into layer props. Server drives updates
 		// on its own throttled tick; no client-side polling.
@@ -72,11 +73,21 @@ class LeaderboardLayer extends Layer {
 			if (json !== (this.props.get('json') as string)) {
 				this.props.set('json', json)
 			}
+			// Mirror painted / total coverage so the bottom row stays live
+			// while the panel is open. `paintedCount()` reads the server-
+			// authoritative PaintCoverage CRDT; `totalCellCount()` is the
+			// client-side rendered cell count (canvas denominator).
+			const p = paintedCount()
+			const t = totalCellCount()
+			if (p !== (this.props.get('painted') as number)) this.props.set('painted', p)
+			if (t !== (this.props.get('total')   as number)) this.props.set('total',   t)
 		})
 	}
 
 	body() {
-		const json = (this.props?.get('json') as string) ?? '[]'
+		const json    = (this.props?.get('json')    as string) ?? '[]'
+		const painted = (this.props?.get('painted') as number) ?? 0
+		const total   = (this.props?.get('total')   as number) ?? 0
 		let entries: LbEntry[] = []
 		try { entries = JSON.parse(json) } catch { /* fall through */ }
 		if (!Array.isArray(entries)) entries = []
@@ -91,7 +102,9 @@ class LeaderboardLayer extends Layer {
 		const headerH  = HEADER_H * s
 		const vPad     = V_PAD * s
 		const hPad     = 14 * s
-		const panelH   = headerH + MAX_ROWS * rowH + vPad * 2 + 8 * s
+		// Extra vertical space at the bottom for the painted / total row.
+		const coverageRowH = rowH
+		const panelH   = headerH + MAX_ROWS * rowH + coverageRowH + vPad * 2 + 8 * s
 		const top      = mobile
 			? Math.max(0, (720 - panelH) / 2 - 50)
 			: BAR_TOP_DT + BTN_SIZE + GAP_BELOW
@@ -150,6 +163,11 @@ class LeaderboardLayer extends Layer {
 					? renderEmpty(s)
 					: entries.slice(0, MAX_ROWS).map((e, i) => renderRow(i + 1, e, s))
 				}
+
+				{/* Coverage footer — painted / total cells across the whole
+				   canvas. Server publishes `painted` via PaintCoverage CRDT;
+				   `total` comes from the local rendered cell count. */}
+				{renderCoverageRow(painted, total, s)}
 
 				{/* Full-panel invisible tap-catcher — rendered LAST so it sits on
 				   top in z-order and absorbs every tap that would otherwise be
@@ -221,6 +239,33 @@ function renderRow(rank: number, e: LbEntry, s: number) {
 				}}
 			/>
 		</UiEntity>
+	)
+}
+
+
+// MARK: renderCoverageRow
+function renderCoverageRow(painted: number, total: number, s: number) {
+	const rowH = ROW_H * s
+	const txt  = `${painted.toLocaleString()} / ${total.toLocaleString()} pixels painted`
+	return (
+		<UiEntity
+			key         = "ui_Lb_coverage"
+			uiTransform = {{
+				width        : '100%',
+				height       : rowH,
+				margin       : { top: 8 * s },
+				borderColor  : Color4.create(1, 1, 1, 0.15),
+				flexDirection: 'row',
+				alignItems   : 'center',
+				justifyContent: 'center',
+			}}
+			uiText = {{
+				value    : txt,
+				fontSize : fontSizes.md * s,
+				color    : DIM,
+				textAlign: 'middle-center',
+			}}
+		/>
 	)
 }
 

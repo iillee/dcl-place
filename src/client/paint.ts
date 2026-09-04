@@ -38,6 +38,8 @@ import {
 	PLACE_PALETTE_SIZE,
 } from 'src/shared/palette'
 import {
+	MAZE_GRID_HEIGHT,
+	MAZE_GRID_WIDTH,
 	MAZE_ORIGIN_OFFSET_METERS,
 	MAZE_TILE_GLTF_SCALE,
 } from 'src/shared/settings'
@@ -543,6 +545,25 @@ export function coverage(): { red: number; blue: number; total: number } {
 		return { red: crdt.red, blue: crdt.blue, total }
 	}
 	return { red: 0, blue: 0, total }
+}
+
+/** Painted-cell count as reported by the server's PaintCoverage CRDT.
+ *  Distinct from coverage().total, which is the canvas denominator. */
+export function paintedCount(): number {
+	for (const [, crdt] of engine.getEntitiesWith(PaintCoverage)) {
+		return crdt.total
+	}
+	return 0
+}
+
+/** Canonical total cell count of the canvas, derived from scene
+ *  constants — the theoretical maximum number of paintable pixels.
+ *  Used as the denominator for coverage HUD text. `cellEntity.size` is
+ *  NOT a good fit here because it only counts locally-rendered cells
+ *  (some edge / ramp cells are not spawned as entities), so it can be
+ *  smaller than the server's authoritative painted count. */
+export function totalCellCount(): number {
+	return MAZE_GRID_WIDTH * MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE
 }
 
 

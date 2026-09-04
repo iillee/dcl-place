@@ -200,11 +200,15 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 	const fillColor     = isEraser
 		? Color4.create(1, 1, 1, 1)
 		: (PLACE_PALETTE[selectedPaletteIndex - 1] ?? PLACE_PALETTE[0])
-	// Only apply the diagonal texture when the bar is fully charged —
-	// otherwise the stretch-scaled texture would distort the diagonal as
-	// the fill grows. During cooldown the eraser bar is plain white.
+	// For the eraser: when the bar is fully charged, apply an aspect-
+	// matched diagonal PNG so the red line runs true corner-to-corner
+	// across the whole fill bar. Separate desktop / mobile PNGs because
+	// the paint button is much wider on mobile (192×76 vs 96×76) and a
+	// single stretched square would skew the diagonal. During cooldown
+	// the bar stays solid white — no diagonal visible.
+	const eraserBarSrc  = isMobile() ? 'assets/images/eraser-bar-mb.png' : 'assets/images/eraser-bar-dt.png'
 	const fillBg        = (isEraser && ready)
-		? { color: fillColor, textureMode: 'stretch' as const, texture: { src: 'assets/images/eraser.png' } }
+		? { color: fillColor, textureMode: 'stretch' as const, texture: { src: eraserBarSrc } }
 		: { color: fillColor }
 	// Both the white swatch and the eraser (white-backed) need the dark
 	// glyph so the `F` stays readable against the fill.
@@ -327,11 +331,12 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 
 
 // MARK: renderSwatch
-// Two-layer structure: an outer WRAPPER draws the selection ring, and an
-// inner FILL holds the color/texture background. DCL's borderWidth is
-// otherwise partially obscured by the uiBackground (especially textures),
-// making the ring look like it's *behind* the swatch. Splitting the ring
-// out into its own element guarantees it renders on top of the fill.
+// Single UiEntity: color/texture background AND selection border on the
+// same box so the rounded outer border and rounded fill share exactly
+// one geometry — no sub-pixel sliver between them, and no mobile
+// alignment drift from a nested absolute child. The eraser icon PNG has
+// transparent corners baked to `borderRadius.sm`, so it nests cleanly
+// against the border without needing a wrapper.
 function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, isLast: boolean, iconSrc?: string) {
 	// White swatch (and eraser, which is also white-backed) gets a black
 	// selection ring so it's visible against the default border color.
@@ -348,61 +353,48 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 			// selection ring appear on the newly-tapped swatch.
 			key         = {`swatch_${paletteIndex}_${isSelected ? 'sel' : 'unsel'}`}
 			uiTransform = {{
-				width       : SWATCH_SIZE,
-				height      : SWATCH_SIZE,
-				flexShrink  : 0,
-				margin      : { right: isLast ? 0 : SWATCH_GAP },
-				borderRadius: borderRadius.sm,
-				borderWidth : isSelected ? ringWidth : 0,
-				borderColor : isSelected ? selBorder : undefined,
+				width         : SWATCH_SIZE,
+				height        : SWATCH_SIZE,
+				flexShrink    : 0,
+				margin        : { right: isLast ? 0 : SWATCH_GAP },
+				borderRadius  : borderRadius.sm,
+				borderWidth   : isSelected ? ringWidth : 0,
+				borderColor   : isSelected ? selBorder : undefined,
+				justifyContent: 'center',
+				alignItems    : 'center',
 			}}
+			uiBackground = {iconSrc
+				? { color, textureMode: 'stretch', texture: { src: iconSrc } }
+				: { color }
+			}
 			onMouseDown  = {() => {
 				// Play the UI click on every swatch tap for consistent feedback.
 				playUiClick()
 				setSelectedPaletteIndex(paletteIndex)
 			}}
 		>
-			{/* Fill layer — sits INSIDE the wrapper's border box so the
-			   selection ring is never covered by the color/texture. */}
-			<UiEntity
-				key         = {`swatch_${paletteIndex}_fill`}
-				uiTransform = {{
-					positionType  : 'absolute',
-					position      : { left: 0, top: 0 },
-					width         : '100%',
-					height        : '100%',
-					borderRadius  : borderRadius.sm,
-					justifyContent: 'center',
-					alignItems    : 'center',
-				}}
-				uiBackground = {iconSrc
-					? { color, textureMode: 'stretch', texture: { src: iconSrc } }
-					: { color }
-				}
-			>
-				{/* Desktop key hint — `E` cycles palette. Only shown on the
-				   selected swatch; flips to black on the white / eraser swatch
-				   so it stays readable against the light fill. */}
-				{isSelected && !isMobile() && (
-					<UiEntity
-						key         = {`swatch_${paletteIndex}_keyHint`}
-						uiTransform = {{
-							positionType  : 'absolute',
-							position      : { left: 0, top: 0 },
-							width         : '100%',
-							height        : '100%',
-							justifyContent: 'center',
-							alignItems    : 'center',
-						}}
-						uiText = {{
-							value    : '<b>E</b>',
-							fontSize : 22,
-							color    : whiteBacked ? KEY_HINT_BLACK : KEY_HINT_WHITE,
-							textAlign: 'middle-center',
-						}}
-					/>
-				)}
-			</UiEntity>
+			{/* Desktop key hint — `E` cycles palette. Only shown on the
+			   selected swatch; flips to black on the white / eraser swatch
+			   so it stays readable against the light fill. */}
+			{isSelected && !isMobile() && (
+				<UiEntity
+					key         = {`swatch_${paletteIndex}_keyHint`}
+					uiTransform = {{
+						positionType  : 'absolute',
+						position      : { left: 0, top: 0 },
+						width         : '100%',
+						height        : '100%',
+						justifyContent: 'center',
+						alignItems    : 'center',
+					}}
+					uiText = {{
+						value    : '<b>E</b>',
+						fontSize : 22,
+						color    : whiteBacked ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						textAlign: 'middle-center',
+					}}
+				/>
+			)}
 		</UiEntity>
 	)
 }
