@@ -19,7 +19,7 @@ import { isMobile } from '@dcl/sdk/platform'
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
 
 import { isMusicMuted, playUiClick, toggleMusic } from 'src/client/audio'
-import { isTopDownActive, toggleTopDownCamera }   from 'src/client/topDownCamera'
+import { canZoomIn, canZoomOut, isTopDownActive, toggleTopDownCamera, zoomIn, zoomOut } from 'src/client/topDownCamera'
 import {
 	helpPanelLayer,
 	isHelpPanelVisible,
@@ -134,6 +134,34 @@ function MuteIcon(props: { muted: boolean }) {
 }
 
 
+// MARK: ZoomGlyph — chunky + / − bars, sized to read at 72px button scale.
+const ZOOM_GLYPH_LEN = 32
+const ZOOM_GLYPH_BAR = 6
+function ZoomGlyph(props: { kind: 'in' | 'out'; color: Color4 }) {
+	return (
+		<UiEntity
+			uiTransform = {{
+				width: ZOOM_GLYPH_LEN, height: ZOOM_GLYPH_LEN,
+				justifyContent: 'center', alignItems: 'center',
+			}}
+		>
+			{/* Horizontal bar — present on both + and −. */}
+			<UiEntity
+				uiTransform  = {{ positionType: 'absolute', width: ZOOM_GLYPH_LEN, height: ZOOM_GLYPH_BAR }}
+				uiBackground = {{ color: props.color }}
+			/>
+			{/* Vertical bar — only for +. */}
+			{props.kind === 'in' && (
+				<UiEntity
+					uiTransform  = {{ positionType: 'absolute', width: ZOOM_GLYPH_BAR, height: ZOOM_GLYPH_LEN }}
+					uiBackground = {{ color: props.color }}
+				/>
+			)}
+		</UiEntity>
+	)
+}
+
+
 // MARK: TrophyGlyph — ★ for the leaderboard button.
 function TrophyGlyph(props: { color: Color4 }) {
 	return (
@@ -159,6 +187,8 @@ type TopBarProps = {
 	musicMuted  : boolean
 	helpOpen    : boolean
 	lbOpen      : boolean
+	zoomInOk    : boolean
+	zoomOutOk   : boolean
 }
 
 class TopBarLayer extends Layer {
@@ -177,6 +207,8 @@ class TopBarLayer extends Layer {
 			musicMuted: isMusicMuted(),
 			helpOpen  : isHelpPanelVisible(),
 			lbOpen    : isLeaderboardVisible(),
+			zoomInOk  : canZoomIn(),
+			zoomOutOk : canZoomOut(),
 		})
 
 		// Poll shared state each frame so button visuals stay in sync
@@ -193,6 +225,10 @@ class TopBarLayer extends Layer {
 			if (mute !== cur('musicMuted')) this.props.set('musicMuted', mute)
 			if (help !== cur('helpOpen'))   this.props.set('helpOpen',   help)
 			if (lb   !== cur('lbOpen'))     this.props.set('lbOpen',     lb)
+			const zi = canZoomIn()
+			const zo = canZoomOut()
+			if (zi !== cur('zoomInOk'))  this.props.set('zoomInOk',  zi)
+			if (zo !== cur('zoomOutOk')) this.props.set('zoomOutOk', zo)
 		})
 	}
 
@@ -205,6 +241,8 @@ class TopBarLayer extends Layer {
 		const musicMuted = (this.props?.get('musicMuted') as boolean) ?? false
 		const helpOpen   = (this.props?.get('helpOpen')   as boolean) ?? false
 		const lbOpen     = (this.props?.get('lbOpen')     as boolean) ?? false
+		const zoomInOk   = (this.props?.get('zoomInOk')   as boolean) ?? false
+		const zoomOutOk  = (this.props?.get('zoomOutOk')  as boolean) ?? false
 
 		return (
 			<UiEntity
@@ -215,6 +253,27 @@ class TopBarLayer extends Layer {
 					justifyContent: 'center',
 				}}
 			>
+				{/* Zoom out / in — only visible while spectator (top-down)
+				   mode is active. Sit to the LEFT of the eye button so the
+				   camera controls read as one cluster. Grayed via alpha when
+				   the camera is at the min/max altitude clamp. */}
+				{specActive && (
+					<PanelButton
+						keyId   = {`ui_TopBar_zoomOut_${zoomOutOk ? 'on' : 'off'}`}
+						onPress = {() => { if (zoomOutOk) zoomOut() }}
+					>
+						<ZoomGlyph kind="out" color={zoomOutOk ? WHITE : Color4.create(1, 1, 1, 0.4)} />
+					</PanelButton>
+				)}
+				{specActive && (
+					<PanelButton
+						keyId   = {`ui_TopBar_zoomIn_${zoomInOk ? 'on' : 'off'}`}
+						onPress = {() => { if (zoomInOk) zoomIn() }}
+					>
+						<ZoomGlyph kind="in" color={zoomInOk ? WHITE : Color4.create(1, 1, 1, 0.4)} />
+					</PanelButton>
+				)}
+
 				<PanelButton
 					keyId   = "ui_TopBar_spec"
 					onPress = {() => { playUiClick(); toggleTopDownCamera() }}
@@ -244,6 +303,18 @@ class TopBarLayer extends Layer {
 				>
 					<QuestionGlyph color={helpOpen ? GOLD : WHITE} />
 				</PanelButton>
+
+				{/* Invisible right-side spacer matching the width of the two
+				   zoom buttons on the left, so the core-4 button row stays
+				   visually centered when spectator mode is toggled on. Each
+				   PanelButton is BTN_SIZE + BTN_GAP wide (margin left/right
+				   of BTN_GAP/2 each side), so two = 2*(BTN_SIZE + BTN_GAP). */}
+				{specActive && (
+					<UiEntity
+						key         = "ui_TopBar_zoomSpacer"
+						uiTransform = {{ width: 2 * (BTN_SIZE + BTN_GAP), height: BTN_SIZE }}
+					/>
+				)}
 			</UiEntity>
 		)
 	}

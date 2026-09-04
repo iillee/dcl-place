@@ -40,8 +40,11 @@ const CAM_ALTITUDE_DEFAULT         = isMobile() ? CAM_ALTITUDE_MOBILE_DEFAULT : 
 const CAM_ALTITUDE_MIN             = 20
 // Mobile caps at the lowest 5 zoom steps (20/30/40/50/60) — higher
 // altitudes render the canvas too small to read on a phone screen.
-const CAM_ALTITUDE_MAX             = isMobile() ? 60 : 140
-const CAM_ALTITUDE_STEP            = 10
+const CAM_ALTITUDE_MAX             = isMobile() ? 60 : 300
+// Desktop zooms in coarser 25m steps so the wider range (up to 300m) is
+// still reachable in a reasonable number of clicks. Mobile keeps 10m
+// steps for finer control within its narrower 20–60m band.
+const CAM_ALTITUDE_STEP            = isMobile() ? 10 : 25
 
 // Offset direction from directly-overhead determines what world axis is
 // "up" on screen. Offset on +Z rotates the view 90° CCW from the old

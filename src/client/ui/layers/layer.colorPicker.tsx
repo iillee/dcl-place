@@ -20,7 +20,7 @@ import { playUiClick } from 'src/client/audio'
 
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
 
-import { PLACE_PALETTE } from 'src/shared/palette'
+import { PLACE_PALETTE, PALETTE_NONE } from 'src/shared/palette'
 import {
 	canPlaceNow,
 	cooldownRemainingMs,
@@ -37,7 +37,11 @@ const { colors, borderRadius, spacing } = UI_THEME
 
 const SWATCH_SIZE     = 56
 const SWATCH_GAP      = 6
-const SELECTED_BORDER = 3
+const SELECTED_BORDER       = 3
+// The black ring on white-backed swatches (white + eraser) reads thinner
+// on-screen than the white ring on colored swatches at the same pixel
+// width, so bump it up to match.
+const SELECTED_BORDER_BLACK = 3
 const PANEL_PAD       = 10
 // Paint button sits inline to the right of the swatch panel. Height
 // matches the panel (SWATCH_SIZE + PANEL_PAD*2 = 76) so both read as one
@@ -57,15 +61,23 @@ const PAINT_FILL_INSET  = 4
 // selected so it stays readable against the fill.
 const WHITE_PALETTE_INDEX = 7
 const KEY_HINT_WHITE      = Color4.create(1, 1, 1, 0.95)
-const KEY_HINT_BLACK      = Color4.create(0, 0, 0, 0.85)
+const KEY_HINT_BLACK      = Color4.create(0, 0, 0, 1)
 // Opaque black used for the white-swatch selection ring (alpha-blended
 // KEY_HINT_BLACK reads as grey on top of pure white).
 const SELECT_RING_BLACK   = Color4.create(0, 0, 0, 1)
 
+// Eraser occupies palette index 0 (PALETTE_NONE). Rendered on the LEFT
+// as a white square with a red diagonal (assets/images/eraser.png). Its
+// swatch color entry is just a placeholder — the icon PNG is drawn on top.
+const ERASER_COLOR = Color4.create(1, 1, 1, 1)
+
 // Render every entry in PLACE_PALETTE in its natural order. paletteIndex
-// = position in PLACE_PALETTE + 1 (index 0 is reserved for "unpainted").
-const VISIBLE_PALETTE: Array<{ paletteIndex: number, color: Color4 }> =
-	PLACE_PALETTE.map((color, i) => ({ paletteIndex: i + 1, color }))
+// = position in PLACE_PALETTE + 1 (index 0 is reserved for "unpainted" /
+// eraser — which is prepended as the first entry below).
+const VISIBLE_PALETTE: Array<{ paletteIndex: number, color: Color4, iconSrc?: string }> = [
+	{ paletteIndex: PALETTE_NONE, color: ERASER_COLOR, iconSrc: 'assets/images/eraser.png' },
+	...PLACE_PALETTE.map((color, i) => ({ paletteIndex: i + 1, color })),
+]
 const PALETTE_COUNT   = VISIBLE_PALETTE.length
 // Extra horizontal buffer so the selected-swatch border + Background edge
 // don't clip the last swatch.
@@ -157,7 +169,7 @@ class ColorPickerLayer extends Layer {
 					{VISIBLE_PALETTE.map((entry, i) => {
 						const isSelected = entry.paletteIndex === selected
 						const isLast     = i === VISIBLE_PALETTE.length - 1
-						return renderSwatch(entry.color, entry.paletteIndex, isSelected, isLast)
+						return renderSwatch(entry.color, entry.paletteIndex, isSelected, isLast, entry.iconSrc)
 					})}
 				</UiEntity>
 
@@ -181,7 +193,24 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 	const fillWidthPct  = `${Math.round(progress * 100)}%` as const
 	// Fill is always the currently-selected palette color. "Fully filled"
 	// = ready to paint; a partial fill IS the cooldown.
-	const fillColor     = PLACE_PALETTE[selectedPaletteIndex - 1] ?? PLACE_PALETTE[0]
+	// Eraser (index 0) fills the paint button with the eraser icon
+	// (white + red diagonal) instead of a solid color so it visually
+	// matches the eraser swatch.
+	const isEraser      = selectedPaletteIndex === PALETTE_NONE
+	const fillColor     = isEraser
+		? Color4.create(1, 1, 1, 1)
+		: (PLACE_PALETTE[selectedPaletteIndex - 1] ?? PLACE_PALETTE[0])
+	// Only apply the diagonal texture when the bar is fully charged —
+	// otherwise the stretch-scaled texture would distort the diagonal as
+	// the fill grows. During cooldown the eraser bar is plain white.
+	const fillBg        = (isEraser && ready)
+		? { color: fillColor, textureMode: 'stretch' as const, texture: { src: 'assets/images/eraser.png' } }
+		: { color: fillColor }
+	// Both the white swatch and the eraser (white-backed) need the dark
+	// glyph so the `F` stays readable against the fill.
+	const hintColor     = (selectedPaletteIndex === WHITE_PALETTE_INDEX || isEraser)
+		? KEY_HINT_BLACK
+		: KEY_HINT_WHITE
 	return (
 		<UiEntity
 			key         = "ui_PaintBtn"
@@ -238,7 +267,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 						height      : '100%',
 						borderRadius: borderRadius.sm,
 					}}
-					uiBackground = {{ color: fillColor }}
+					uiBackground = {fillBg}
 				/>
 			</UiEntity>
 
@@ -259,7 +288,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 					uiText = {{
 						value    : '<b>F</b>',
 						fontSize : 22,
-						color    : selectedPaletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						color    : hintColor,
 						textAlign: 'middle-center',
 					}}
 				/>
@@ -287,7 +316,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 						// report: react-ecs-richtext-hitbox-mismatch.md.
 						value    : 'click',
 						fontSize : 28,
-						color    : selectedPaletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						color    : hintColor,
 						textAlign: 'middle-center',
 					}}
 				/>
@@ -298,10 +327,17 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 
 
 // MARK: renderSwatch
-function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, isLast: boolean) {
-	// White swatch gets a black selection ring so it's visible against
-	// the (also white) default border color.
-	const selBorder = paletteIndex === WHITE_PALETTE_INDEX ? SELECT_RING_BLACK : colors.light
+// Two-layer structure: an outer WRAPPER draws the selection ring, and an
+// inner FILL holds the color/texture background. DCL's borderWidth is
+// otherwise partially obscured by the uiBackground (especially textures),
+// making the ring look like it's *behind* the swatch. Splitting the ring
+// out into its own element guarantees it renders on top of the fill.
+function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, isLast: boolean, iconSrc?: string) {
+	// White swatch (and eraser, which is also white-backed) gets a black
+	// selection ring so it's visible against the default border color.
+	const whiteBacked = paletteIndex === WHITE_PALETTE_INDEX || paletteIndex === PALETTE_NONE
+	const selBorder   = whiteBacked ? SELECT_RING_BLACK : colors.light
+	const ringWidth   = whiteBacked ? SELECTED_BORDER_BLACK : SELECTED_BORDER
 	return (
 		<UiEntity
 			// Include selection state in the key so the swatch REMOUNTS
@@ -317,38 +353,56 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 				flexShrink  : 0,
 				margin      : { right: isLast ? 0 : SWATCH_GAP },
 				borderRadius: borderRadius.sm,
-				borderWidth : isSelected ? SELECTED_BORDER : 0,
+				borderWidth : isSelected ? ringWidth : 0,
 				borderColor : isSelected ? selBorder : undefined,
 			}}
-			uiBackground = {{ color }}
 			onMouseDown  = {() => {
 				// Play the UI click on every swatch tap for consistent feedback.
 				playUiClick()
 				setSelectedPaletteIndex(paletteIndex)
 			}}
 		>
-			{/* Desktop key hint — `E` cycles palette. Only shown on the
-			   selected swatch; flips to black on the white swatch so it
-			   stays readable. */}
-			{isSelected && !isMobile() && (
-				<UiEntity
-					key         = {`swatch_${paletteIndex}_keyHint`}
-					uiTransform = {{
-						positionType  : 'absolute',
-						position      : { left: 0, top: 0 },
-						width         : '100%',
-						height        : '100%',
-						justifyContent: 'center',
-						alignItems    : 'center',
-					}}
-					uiText = {{
-						value    : '<b>E</b>',
-						fontSize : 22,
-						color    : paletteIndex === WHITE_PALETTE_INDEX ? KEY_HINT_BLACK : KEY_HINT_WHITE,
-						textAlign: 'middle-center',
-					}}
-				/>
-			)}
+			{/* Fill layer — sits INSIDE the wrapper's border box so the
+			   selection ring is never covered by the color/texture. */}
+			<UiEntity
+				key         = {`swatch_${paletteIndex}_fill`}
+				uiTransform = {{
+					positionType  : 'absolute',
+					position      : { left: 0, top: 0 },
+					width         : '100%',
+					height        : '100%',
+					borderRadius  : borderRadius.sm,
+					justifyContent: 'center',
+					alignItems    : 'center',
+				}}
+				uiBackground = {iconSrc
+					? { color, textureMode: 'stretch', texture: { src: iconSrc } }
+					: { color }
+				}
+			>
+				{/* Desktop key hint — `E` cycles palette. Only shown on the
+				   selected swatch; flips to black on the white / eraser swatch
+				   so it stays readable against the light fill. */}
+				{isSelected && !isMobile() && (
+					<UiEntity
+						key         = {`swatch_${paletteIndex}_keyHint`}
+						uiTransform = {{
+							positionType  : 'absolute',
+							position      : { left: 0, top: 0 },
+							width         : '100%',
+							height        : '100%',
+							justifyContent: 'center',
+							alignItems    : 'center',
+						}}
+						uiText = {{
+							value    : '<b>E</b>',
+							fontSize : 22,
+							color    : whiteBacked ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+							textAlign: 'middle-center',
+						}}
+					/>
+				)}
+			</UiEntity>
 		</UiEntity>
 	)
 }

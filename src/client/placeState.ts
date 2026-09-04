@@ -15,7 +15,8 @@ type Listener = () => void
 
 const listeners = new Set<Listener>()
 
-let selectedPaletteIndex = 1 // default: red
+// 0 = eraser (clears the cell), 1..PLACE_PALETTE_SIZE = paint colors.
+let selectedPaletteIndex = 1 // default: first color
 let nextAllowedAtServer  = 0 // ms since epoch, server clock
 let serverSkewMs         = 0 // serverNow - Date.now() at last ack
 
@@ -40,7 +41,7 @@ export function getSelectedPaletteIndex(): number {
 }
 
 export function setSelectedPaletteIndex(index: number): void {
-	if (index < 1 || index > PLACE_PALETTE_SIZE) return
+	if (index < 0 || index > PLACE_PALETTE_SIZE) return
 	if (index === selectedPaletteIndex) return
 	selectedPaletteIndex = index
 	notify()

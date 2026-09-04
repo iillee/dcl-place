@@ -286,9 +286,10 @@ export function initPaintHotkey(): void {
 			placeAtFeet()
 		}
 		if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
-			// paletteIndex is 1..PLACE_PALETTE_SIZE; wrap 1 → 8 (left / backward).
+			// paletteIndex is 0..PLACE_PALETTE_SIZE (0 = eraser). Cycle backward
+			// through the whole row, wrapping 0 → PLACE_PALETTE_SIZE.
 			const cur  = getSelectedPaletteIndex()
-			const next = cur === 1 ? PLACE_PALETTE_SIZE : cur - 1
+			const next = cur === 0 ? PLACE_PALETTE_SIZE : cur - 1
 			setSelectedPaletteIndex(next)
 			playUiClick()
 		}

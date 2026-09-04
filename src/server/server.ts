@@ -143,7 +143,8 @@ export async function setupServer(): Promise<void> {
 		const notBefore = nextAllowedAt.get(from) ?? 0
 
 		// Validate palette index up front so a bad message still burns cooldown time slot.
-		if (paletteIndex < 1 || paletteIndex > PLACE_PALETTE_SIZE) {
+		// 0 = eraser (clears the cell), 1..N = palette colors.
+		if (paletteIndex < 0 || paletteIndex > PLACE_PALETTE_SIZE) {
 			placeRejectedBad++
 			room.send('cooldownAck', { accepted: false, nextAllowedAt: notBefore, serverNow: now }, { to: [from] })
 			return

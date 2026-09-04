@@ -101,15 +101,17 @@ export function seedPlacePalette(): void {
 // MARK: applyPaintIndex
 
 /**
- * dcl/place: paint a cell with a specific palette index (1..16). Overwrites
- * whatever was there. Returns true only when the cell actually changed.
+ * dcl/place: paint a cell with a specific palette index (0..PLACE_PALETTE_SIZE).
+ * Index 0 erases the cell back to unpainted. Overwrites whatever was there.
+ * Returns true only when the cell actually changed.
  */
 export function applyPaintIndex(id: string, paletteIndex: number): boolean {
-	if (paletteIndex < 1 || paletteIndex > PLACE_PALETTE_SIZE) return false
+	if (paletteIndex < 0 || paletteIndex > PLACE_PALETTE_SIZE) return false
 	const prev = cellIndex.get(id) ?? PALETTE_NONE
 	if (prev === paletteIndex) return false
 	if (!writeCellIndex(id, paletteIndex)) return false
-	cellIndex.set(id, paletteIndex)
+	if (paletteIndex === PALETTE_NONE) cellIndex.delete(id)
+	else                                cellIndex.set(id, paletteIndex)
 	coverageDirty = true
 	canvasDirty   = true
 	snapshotDirty = true

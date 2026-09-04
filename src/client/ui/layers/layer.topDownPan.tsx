@@ -370,10 +370,9 @@ class TopDownPanLayer extends Layer {
 				{/* D-pad is mobile-only — desktop uses click-drag panning via
 				    the catcher above, so the d-pad would only clutter the HUD. */}
 				{isMobile() && <Dpad />}
-				{/* Zoom cluster on both platforms — there is no reliable
-				    mouse-wheel or pinch input in SDK7, so buttons are the
-				    single interaction model. */}
-				<ZoomCluster />
+				{/* Zoom cluster is mobile-only — desktop shows +/− in the top
+				    bar (see layer.topBar.tsx) next to the spectator eye. */}
+				{isMobile() && <ZoomCluster />}
 			</UiEntity>
 		)
 	}
