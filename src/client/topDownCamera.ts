@@ -47,11 +47,17 @@ const CAM_ALTITUDE_MAX             = isMobile() ? 60 : 300
 const CAM_ALTITUDE_STEP            = isMobile() ? 10 : 25
 
 // Offset direction from directly-overhead determines what world axis is
-// "up" on screen. Offset on +Z rotates the view 90° CCW from the old
-// +X offset, so now +X points up and +Z points right on screen (matches
-// the pan/d-pad axes).
+// "up" on screen. Offset on -Z puts +Z pointing up on screen (matches
+// pan/d-pad axes).
+//
+// The offset MUST scale with altitude — a fixed 3m offset gives an ~8°
+// tilt at altitude 20 but <1° at altitude 300, which puts the view so
+// close to straight-down that the camera's up-vector flips and the pan
+// controls invert. Scaling as a ratio of altitude keeps the tilt angle
+// (and therefore the screen orientation) rock-solid across the whole
+// zoom range. 0.15 → ~8.5° tilt at every altitude.
 const CAM_OFFSET_X = 0
-const CAM_OFFSET_Z = -3
+const CAM_OFFSET_RATIO_Z = -0.15
 const TRANSITION_SPEED = 200
 const FOLLOW_RATE = 5.0
 const FOLLOW_SNAP_EPSILON = 0.05
@@ -90,7 +96,7 @@ export function setupTopDownCamera(): void {
 
 	camEntity = engine.addEntity()
 	Transform.create(camEntity, {
-		position: Vector3.create(targetPos.x + CAM_OFFSET_X, currentAltitude, targetPos.z + CAM_OFFSET_Z),
+		position: Vector3.create(targetPos.x + CAM_OFFSET_X, currentAltitude, targetPos.z + CAM_OFFSET_RATIO_Z * currentAltitude),
 	})
 	VirtualCamera.create(camEntity, {
 		lookAtEntity:      lookTargetEnt,
@@ -158,7 +164,7 @@ function updateCamera(dt: number): void {
 		const t = Transform.getMutable(camEntity)
 		t.position.x = targetPos.x + CAM_OFFSET_X
 		t.position.y = currentAltitude
-		t.position.z = targetPos.z + CAM_OFFSET_Z
+		t.position.z = targetPos.z + CAM_OFFSET_RATIO_Z * currentAltitude
 	}
 }
 

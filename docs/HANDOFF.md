@@ -382,6 +382,37 @@ The UX iteration:
 ## ⚠️ Known gaps
 
 
+- **Mobile paint tap sometimes no-ops (post-playtest).** Reported: player
+  taps the paint button, nothing happens, no feedback. Two suspected
+  causes stacked:
+  1. `placeAtFeet()` (`src/client/placeInput.ts:259`) silently returns
+     when `currentFeetCellId` is null (airborne gate, tile seam, feet
+     raycast miss, or a tile with no paint cells due to the MASKS bug).
+     No SFX, no visual — indistinguishable from a missed tap. Fix:
+     play a "denied" click and briefly flash the paint button border
+     red so the user knows the input registered.
+  2. **Design fix — highlight is source of truth.** When the player
+     stands on a tile seam, the preview highlight cube shows a specific
+     cell (whichever the feet system snapped to). The paint action
+     should ALWAYS place on that highlighted cell. Currently the paint
+     path re-resolves `currentFeetCellId` independently and can come
+     back null even while the highlight is displayed. Route
+     `placeAtFeet()` through whatever cellId the highlight is currently
+     rendering — one source of truth. This likely accounts for most of
+     the "tapped and nothing happened" reports; the misclick-during-
+     cooldown case is secondary.
+
+- **Cooldown bar jumps backward mid-fill on mobile (post-playtest).**
+  Reported: bar starts filling, nearly completes, snaps back near 0,
+  refills again. Cause: `applyCooldownAck` in `src/client/placeState.ts`
+  recomputes `serverSkewMs = serverNow - Date.now()` on EVERY ack. On
+  mobile, network jitter of a few hundred ms between acks means each
+  new sample gives a different skew, and `serverNowMs()` jumps by that
+  delta — the cooldown-remaining calc jerks accordingly. Fix: smooth
+  skew with an EMA (alpha ~0.1) seeded on the first ack, so single
+  high-latency samples don't yank the clock. Optional upgrade: track
+  min-observed-latency NTP-style.
+
 - **Yellow palette color + white F glyph** = low contrast. Only white is special-cased to flip the F to black; yellow will look faint. Fix (if bothersome): compute perceived luminance from fill color and pick black/white automatically.
 - **Legacy compat shims** (`team.ts`, `roundTiming.ts`, `Team.Red/Blue`) still present but inert. `TEAM_COLORS[Red]/[Blue]` alias `PLACE_PALETTE[0]/[1]` (blue/red — yes, backwards) — harmless since teams are unused.
 - **`initPaintingSystem` is a no-op** — legacy walk-to-paint disabled.
