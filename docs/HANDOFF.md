@@ -3,9 +3,54 @@
 > Read this first when starting a new session. Full design lives in [DESIGN.md](./DESIGN.md).
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
-**Branch:** `main`
-**Last committed session:** fabe751 — "feat(ux): welcome flow, mobile UI polish, timelapse downloader"
-**This session:** 🎨 **First-run UX + mobile polish + Discord timelapse pipeline.**
+**Branch:** `loadoptimization` (unmerged) — base: `main` @ fabe751
+**This session:** ⚡ **Solid-floor refactor — maze system removed for mobile load performance.**
+Replaced the 400-tile maze GLB grid with a single `assets/models/tile_floor.glb`
+at world origin. Boot fetches went 400 → 1. Deleted `src/client/maze/` and
+`src/shared/maze/` entirely (~1,450 LOC gone), rewrote `paint.ts` around a
+**chunked** `spawnPaintCanvas()` that lays down every paint-cell entity across
+multiple frames (600 cells/frame). Interior tile-junction voids from the old
+CROSS_MASK are now filled (all interior cells paintable, fixes the two-shade-
+white bug); outer-perimeter arm cells that would overhang the floor GLB are
+trimmed. Interior cellIds are byte-identical to the deployed canvas — all
+persisted user art keeps its exact world position. Also swept dead code:
+deleted `PaintCell` component + `SEED_NETWORK_ID`/`CELL_NETWORK_BASE` +
+`cellNetworkId`/`cellKeyFromNetworkId` helpers + 9 unused tile-*.glb assets.
+
+### Mobile-specific lessons learned (Sept 6 iteration)
+
+1. **Single-frame spawn of 25,444 cells destroys mobile.** First cut used one
+   synchronous loop — mobile showed ~50% correctly-colored cells + ~30% white
+   uncolored cells + ~20% voids where entities failed to allocate. Fix: chunked
+   spawn (`CELLS_PER_FRAME = 600`, ~42 frames = ~1.5s at 30fps). Give the GPU
+   time to commit each batch.
+2. **Shared MaterialInfo objects break mobile rendering.** Tried caching 9
+   `{ albedoColor, roughness, ... }` objects and passing the same reference
+   to every `Material.setPbrMaterial(entity, sharedObj)` — desktop rendered
+   fine, mobile went **completely blank**. The SDK / renderer appears to
+   reference or mutate the object internally, so sharing broke every commit.
+   Fix: allocate a fresh MaterialInfo per call. Code comment left in paint.ts.
+3. **Splash gate must cover BOTH stages** (spawn drain + CRDT hydration).
+   Previously flipped on first-tile CRDT arrival → splash lifted mid-hydration
+   → users saw half-painted canvas. New gate: `isSpawningCanvas() ||
+   !paintTelemetry().paintHydrated`. `paintHydrated` now flips on all-tiles OR
+   1.5s quiescence OR 10s timeout — handles fully-painted, sparsely-painted,
+   and slow-network cases cleanly.
+
+### Post-refactor perf shape
+
+- Boot: 1 GLB fetch (was 400)
+- Cell spawn: ~1.5s chunked (mobile) / ~0.5s (desktop) behind splash
+- CRDT hydration: unchanged (already chunked per PaintTile, ~275ms for full
+  canvas per HANDOFF's earlier CRDT migration notes)
+- Total load: splash lifts at max(2.5s min, spawn done, hydration done)
+- Render steady-state: 25,444 draw calls / frame. Mobile handles it; if we
+  ever need more headroom the next win is a single-texture render (Phase 3
+  LOD, currently deferred).
+
+Previous session log preserved below.
+
+**Previous session:** 🎨 **First-run UX + mobile polish + Discord timelapse pipeline.**
 Onboarding now hands new players an overhead view of the canvas the moment
 the splash clears, with the help panel already open — one tap dismisses it
 and drops them into play. Mobile UI got a real pass: help panel copy rewritten
@@ -429,12 +474,11 @@ The UX iteration:
 src/index.ts             async isServer() branch (do NOT use sync isServer)
 src/shared/
   messages.ts            placePixel, cooldownAck, joinRoster, updateName, requestLeaderboard
-  palette.ts             8-color PLACE_PALETTE. TEAM_COLORS[None] = #EAEAEA (see fix above)
+  palette.ts             8-color PLACE_PALETTE. TEAM_COLORS[None] = #EAEAEA
   settings.ts            PAINT_COOLDOWN_MS = 1000
-  paintGrid.ts           cellId <-> cellKey (uint32) math
+  paintGrid.ts           cellId <-> cellKey (uint32) math + TILE_NETWORK_BASE
   paintSync.ts           syncEntity wiring (server-only writes)
   components.ts          PaintTile (packed byte array/tile), PaletteEntry, PaintCoverage, LeaderboardState
-  maze/                  tile/level generation
 src/server/
   server.ts              handlers + cooldown map + 30s canvas flush + 1s leaderboard tick + snapshot auto-tick
   paintState.ts          applyPaintIndex, hydratePaintCell, allPaintedCells, snapshotDirty
@@ -442,12 +486,12 @@ src/server/
   leaderboard.ts         top-100 all-time + dirty flag + markLeaderboardDirty()
   snapshotDiscord.ts     server-side PNG encode + Discord webhook multipart upload
 src/client/
-  index.ts               boot orchestration + hotkey wiring
+  index.ts               boot orchestration + hotkey wiring (no more seed watcher)
   clientHandler.ts       joinRoster, updateName, cooldownAck receiver
   placeState.ts          selectedPaletteIndex + cooldown observable
   placeInput.ts          feet-tracker + highlight cube + placeAtFeet + F/E hotkeys
-  paint.ts               flat tile renderer, CRDT observer, worldToCellId
-  maze/rebuild.ts        tile GLB spawning
+  paint.ts               spawnPaintCanvas (single floor GLB + 25,444 cells),
+                         CRDT observer, worldToCellId (pure math on flat grid)
   topDownCamera.ts       spectator + pan camera
   ui/
     index.tsx            DUCK SetupUiComponentKit registration
@@ -457,10 +501,26 @@ src/client/
       layer.topBar       4 white-bordered buttons: spec, mute, ★, ?
       layer.helpPanel    slide-down 3-line rules
       layer.topDownPan   spectator drag catcher
-      layer.version      version chip
+      layer.loadingSplash gate = !paintTelemetry().paintHydrated (was: !isRebuilding())
     utils/
       leaderboard.ts     readLeaderboard() — CRDT reader used by the layer
+assets/models/
+  tile_floor.glb         The one and only floor mesh (320×320m at world origin).
 ```
+
+### Solid-floor refactor cheat notes
+
+- **Cell count:** 25,444 (was 25,600 full / 22,000 CROSS_MASK). Interior filled;
+  outer-perimeter arms trimmed to fit floor GLB.
+- **Trim rule** (paint.ts `cellOnFloor`): skip cells where
+  (`tx=0 && col<LO`) | (`tx=W-1 && col>=HI`) | (`tz=0 && row<LO`) | (`tz=H-1 && row>=HI`),
+  with `LO=3, HI=13` from the old corridor bounds.
+- **Y positions:** floor GLB at (0,0,0), paint slabs at y = `0.275 * 2 = 0.55m`,
+  walkable surface at y = `0.5 * 2 = 1.0m`. Preserved from the old tile GLBs so
+  no vertical drift in the persisted canvas.
+- **CellId compat:** interior cellIds are byte-identical to the pre-refactor
+  format (`tx,tz,0:col,row`), so PaintTile CRDT hydration and canvasStorage
+  restore work unchanged on the loadoptimization build.
 
 ### Key contracts
 - **Client → Server:** `placePixel { cellId, paletteIndex: 1..8 }`, `requestLeaderboard {}` (fired once on panel open), `updateName { name }`, `joinRoster { userId }`

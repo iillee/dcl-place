@@ -23,8 +23,20 @@ import { isMobile } from '@dcl/sdk/platform'
 import { Vector3, Color4, Quaternion } from '@dcl/sdk/math'
 
 import { room } from 'src/shared/messages'
-import { CELL, STEP, lookupTile } from 'src/shared/maze/generator'
-import { PAINT_COOLDOWN_MS, PAINT_CELL_SIZE_METERS, MAZE_TILE_GLTF_SCALE } from 'src/shared/settings'
+import {
+	PAINT_COOLDOWN_MS,
+	PAINT_CELL_SIZE_METERS,
+	MAZE_TILE_GLTF_SCALE,
+	MAZE_TILE_WORLD_METERS,
+	MAZE_RAMP_STEP_METERS,
+} from 'src/shared/settings'
+
+// Solid-floor refactor: `lookupTile` is no longer needed — `worldToCellId`
+// is pure math on a flat grid. CELL/STEP kept as call-site params for
+// signature compatibility only; they're ignored by worldToCellId.
+const CELL = MAZE_TILE_WORLD_METERS
+const STEP = MAZE_RAMP_STEP_METERS
+const lookupTile = null as unknown as never
 import { placeColor, PLACE_PALETTE_SIZE } from 'src/shared/palette'
 
 import { worldToCellId } from 'src/client/paint'

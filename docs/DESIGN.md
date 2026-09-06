@@ -72,10 +72,9 @@ Sparse CRDT: only painted cells cost anything.
 
 ### Cooldown
 
-- **v1:** 10 seconds (dev/playtest)
-- **Launch:** likely 30s–60s once the crowd shows up
+- **Live:** 1 second (tuned down from 10s in playtest — see HANDOFF)
 - Enforced **server-side** using `Date.now()` per wallet address (in-memory map)
-- Client renders an optimistic ring from the last `cooldownAck.nextAllowedAt`
+- Client renders an optimistic fill from the last `cooldownAck.nextAllowedAt`
 
 ---
 
@@ -93,7 +92,7 @@ Modeled on snowdrift's bottom UI row (proven touch-target sizing / thumb zone).
 
 ### Modals
 
-- **Color picker:** 4×4 grid, 16 swatches, large tap targets, selected swatch highlighted
+- **Color picker:** single row of 8 swatches (trimmed from 16 for mobile clarity), large tap targets, selected swatch highlighted
 - **Help:** first-time onboarding + rules
 - **Leaderboard:** top 100 pixel-placers all-time
 - **Snapshot:** current canvas JPG preview + share/download

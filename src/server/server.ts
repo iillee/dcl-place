@@ -84,7 +84,7 @@ export async function setupServer(): Promise<void> {
 		`[Server] paint grid: ${paintCap.cellCapacity} cell slots ` +
 		`(${paintCap.paintCellsPerTileAxis}×${paintCap.paintCellsPerTileAxis}/tile × ` +
 		`${paintCap.tiles} tiles × ${paintCap.levels} levels); ` +
-		`PaintCell networkIds ${paintCap.cellNetBase}+`
+		`PaintTile networkIds ${paintCap.tileNetBase}+`
 	)
 	initPaintSync()
 	seedTeamPalette()   // indexes 0/1/2 (compat)

@@ -15,7 +15,17 @@ import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 
 import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
 
-import { isRebuilding } from 'src/client/maze/rebuild'
+import { paintTelemetry, isSpawningCanvas } from 'src/client/paint'
+
+// Solid-floor refactor: there's no reveal cascade to wait on anymore.
+// Splash stays up while EITHER the chunked cell spawn is still draining
+// OR CRDT hydration is incomplete. On desktop both finish inside the min
+// display time so the splash lifts at 2.5s. On mobile the chunked spawn
+// takes ~1-2s and CRDT can take another few seconds; splash lifts once
+// both are done so the user never sees a half-painted canvas.
+function isRebuilding(): boolean {
+	return isSpawningCanvas() || !paintTelemetry().paintHydrated
+}
 
 
 const SPLASH_IMAGE = 'assets/images/dclplace.png'

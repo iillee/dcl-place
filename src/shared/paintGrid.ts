@@ -29,20 +29,16 @@ export const PAINT_GRID_H    = MAZE_GRID_HEIGHT
 // Ranges must not overlap — syncEntity rejects duplicate ids.
 // Smart Items auto-claim 8001+ for composite items; paint cells use a high
 // sparse-friendly band so we never pre-bind 100k entities below 8001.
-// Fixed singleton ids for server-owned syncEntity (except SeedHolder).
-//   3000       SeedHolder (transitional client sync)
+// Fixed singleton ids for server-owned syncEntity.
 //   3001       LeaderboardState
 //   3100       PaintCoverage
 //   3101       ServerStats
 //   6000-6255  PaletteEntry
-//   100000+    PaintCell (DEPRECATED — unused)
 //   200000+    PaintTile (one per tile)
-export const SEED_NETWORK_ID        = 3000
 export const LEADERBOARD_NETWORK_ID = 3001
 export const PALETTE_NETWORK_BASE   = 6000
 export const COVERAGE_NETWORK_ID    = 3100
 export const STATS_NETWORK_ID       = 3101
-export const CELL_NETWORK_BASE      = 100000
 export const TILE_NETWORK_BASE      = 200000
 
 // MARK: Tile chunk sizing
@@ -165,30 +161,6 @@ export function cellKeyToCellId(key: number): string {
 }
 
 
-// MARK: cellNetworkId
-
-/**
- * Stable syncEntity entityEnumId for a packed cell key (client + server).
- * With a fixed enum id, NetworkEntity stores { networkId: 0, entityId: this }.
- */
-export function cellNetworkId(key: number): number {
-	return CELL_NETWORK_BASE + key
-}
-
-
-// MARK: cellKeyFromNetworkId
-
-/**
- * Reverse of cellNetworkId — packed key from NetworkEntity.entityId
- * (the syncEntity entityEnumId). Null if outside the paint-cell band.
- */
-export function cellKeyFromNetworkId(entityEnumId: number): number | null {
-	const key = entityEnumId - CELL_NETWORK_BASE
-	if (key < 0) return null
-	return key
-}
-
-
 // MARK: packTileKey
 
 /**
@@ -263,7 +235,6 @@ export function paintGridCapacity(): {
 	levels:                number
 	cellCapacity:          number
 	cellsPerTile:          number
-	cellNetBase:           number
 	tileNetBase:           number
 	paletteNetBase:        number
 } {
@@ -276,7 +247,6 @@ export function paintGridCapacity(): {
 		levels,
 		cellCapacity,
 		cellsPerTile:          PAINT_CELLS_PER_TILE,
-		cellNetBase:           CELL_NETWORK_BASE,
 		tileNetBase:           TILE_NETWORK_BASE,
 		paletteNetBase:        PALETTE_NETWORK_BASE,
 	}
