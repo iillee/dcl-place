@@ -9,6 +9,7 @@ tslint.json
 node_modules
 *.ts
 *.tsx
+*.mjs
 .vscode
 Dockerfile
 dist
@@ -22,3 +23,13 @@ src
 cursor.config
 cursorignore
 .github
+# Dev-only folders — never ship to deploy
+backups
+docs
+scripts
+thumbnails
+timelapse
+assets/blender
+assets/sketchup
+assets/asset-packs
+assets/docs
