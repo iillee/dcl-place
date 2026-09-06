@@ -4,8 +4,9 @@
   "description": "The eternal collaborative pixel canvas of Decentraland.",
   "scripts": {
     "start": "sdk-commands start",
-    "deploy": "sdk-commands deploy",
     "build": "sdk-commands build",
+    "build:prod": "sdk-commands build --production",
+    "deploy": "npm run build:prod && sdk-commands deploy --skip-build",
     "server-logs": "sdk-commands sdk-server-logs",
     "upgrade-sdk": "npm install --save-dev @dcl/sdk@auth-server",
     "upgrade-sdk:next": "npm install --save-dev @dcl/sdk@next"
