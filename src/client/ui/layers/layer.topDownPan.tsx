@@ -23,6 +23,7 @@ import { InputAction, PointerEventType, PrimaryPointerInfo, engine, inputSystem 
 import { isMobile } from '@dcl/sdk/platform'
 
 import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
+import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { UI_THEME } from 'src/client/ui/theme/settings'
 import { applyPanDelta, beginDrag, beginPan, canZoomIn, canZoomOut, endDrag, endPan, getDpadSpeed, isDragging, isTopDownActive, zoomIn, zoomOut } from 'src/client/topDownCamera'
@@ -353,6 +354,7 @@ class TopDownPanLayer extends Layer {
 	}
 
 	body() {
+		if (isSplashActive()) return null
 		if (!isTopDownActive()) return null
 		return (
 			<UiEntity

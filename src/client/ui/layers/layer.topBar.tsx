@@ -17,6 +17,7 @@ import { engine } from '@dcl/sdk/ecs'
 import { Color4 } from '@dcl/sdk/math'
 import { isMobile } from '@dcl/sdk/platform'
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
+import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { isMusicMuted, playUiClick, toggleMusic } from 'src/client/audio'
 import { canZoomIn, canZoomOut, isTopDownActive, toggleTopDownCamera, zoomIn, zoomOut } from 'src/client/topDownCamera'
@@ -233,6 +234,7 @@ class TopBarLayer extends Layer {
 	}
 
 	body() {
+		if (isSplashActive()) return <UiEntity />
 		// On mobile, all four actions live on the native on-screen HUD
 		// (see src/client/touchControls.ts) so the top bar is hidden.
 		if (isMobile()) return <UiEntity />

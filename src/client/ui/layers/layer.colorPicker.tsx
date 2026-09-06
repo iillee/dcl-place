@@ -19,6 +19,7 @@ import { isMobile } from '@dcl/sdk/platform'
 import { playUiClick } from 'src/client/audio'
 
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
+import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { PLACE_PALETTE, PALETTE_NONE } from 'src/shared/palette'
 import {
@@ -143,6 +144,7 @@ class ColorPickerLayer extends Layer {
 
 	// MARK: body
 	body() {
+		if (isSplashActive()) return <UiEntity />
 		const selected  = (this.props?.get('selected')    as number) ?? 1
 		const remaining = (this.props?.get('remainingMs') as number) ?? 0
 

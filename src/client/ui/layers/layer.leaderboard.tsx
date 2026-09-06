@@ -18,6 +18,7 @@ import { Color4 } from '@dcl/sdk/math'
 import { isMobile } from '@dcl/sdk/platform'
 
 import { Layer, PropsController, ZoneType } from '@stom66/dcl-ui-component-kit'
+import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { playUiClick } from 'src/client/audio'
 import { room } from 'src/shared/messages'
@@ -85,6 +86,7 @@ class LeaderboardLayer extends Layer {
 	}
 
 	body() {
+		if (isSplashActive()) return <UiEntity />
 		const json    = (this.props?.get('json')    as string) ?? '[]'
 		const painted = (this.props?.get('painted') as number) ?? 0
 		const total   = (this.props?.get('total')   as number) ?? 0

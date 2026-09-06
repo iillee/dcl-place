@@ -15,16 +15,15 @@ import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 
 import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
 
-import { paintTelemetry, isSpawningCanvas } from 'src/client/paint'
+import { paintTelemetry, isSpawningCanvas, isApplyingHydration } from 'src/client/paint'
 
-// Solid-floor refactor: there's no reveal cascade to wait on anymore.
-// Splash stays up while EITHER the chunked cell spawn is still draining
-// OR CRDT hydration is incomplete. On desktop both finish inside the min
-// display time so the splash lifts at 2.5s. On mobile the chunked spawn
-// takes ~1-2s and CRDT can take another few seconds; splash lifts once
-// both are done so the user never sees a half-painted canvas.
+// Solid-floor + lazy-spawn edition: cell entities are created only for
+// painted pixels, as CRDT bytes arrive. Splash stays up while EITHER
+// hydration hasn't signaled complete OR the apply queue is still
+// draining (100 tiles × up to 256 cells each = big burst on hydration;
+// we chunk applies at 300/frame so mobile doesn't stall).
 function isRebuilding(): boolean {
-	return isSpawningCanvas() || !paintTelemetry().paintHydrated
+	return isSpawningCanvas() || isApplyingHydration() || !paintTelemetry().paintHydrated
 }
 
 
@@ -44,7 +43,13 @@ const coldOpenStartedAtMs = Date.now()
 let hasSeenRebuildStart = false
 
 
-function isSplashActive(): boolean {
+/**
+ * True while the splash overlay is visible. Exported so other UI layers
+ * can short-circuit their body() during load — prevents mobile UI
+ * (color picker, top bar, help/leaderboard toggles) from bleeding
+ * through and looking half-loaded before the splash lifts.
+ */
+export function isSplashActive(): boolean {
 	if (isRebuilding()) {
 		hasSeenRebuildStart = true
 		return true

@@ -19,34 +19,63 @@ deleted `PaintCell` component + `SEED_NETWORK_ID`/`CELL_NETWORK_BASE` +
 
 ### Mobile-specific lessons learned (Sept 6 iteration)
 
+We iterated through **four** cell-spawn architectures before mobile was stable.
+The lessons compound and are all still relevant — don't undo any of them:
+
 1. **Single-frame spawn of 25,444 cells destroys mobile.** First cut used one
    synchronous loop — mobile showed ~50% correctly-colored cells + ~30% white
-   uncolored cells + ~20% voids where entities failed to allocate. Fix: chunked
-   spawn (`CELLS_PER_FRAME = 600`, ~42 frames = ~1.5s at 30fps). Give the GPU
-   time to commit each batch.
+   uncolored cells + ~20% voids where entities failed to allocate. Chunked
+   spawn helped, but not enough.
 2. **Shared MaterialInfo objects break mobile rendering.** Tried caching 9
    `{ albedoColor, roughness, ... }` objects and passing the same reference
    to every `Material.setPbrMaterial(entity, sharedObj)` — desktop rendered
    fine, mobile went **completely blank**. The SDK / renderer appears to
-   reference or mutate the object internally, so sharing broke every commit.
-   Fix: allocate a fresh MaterialInfo per call. Code comment left in paint.ts.
-3. **Splash gate must cover BOTH stages** (spawn drain + CRDT hydration).
-   Previously flipped on first-tile CRDT arrival → splash lifted mid-hydration
-   → users saw half-painted canvas. New gate: `isSpawningCanvas() ||
-   !paintTelemetry().paintHydrated`. `paintHydrated` now flips on all-tiles OR
-   1.5s quiescence OR 10s timeout — handles fully-painted, sparsely-painted,
-   and slow-network cases cleanly.
+   reference or mutate the object internally. **Always allocate a fresh
+   MaterialInfo per setPbrMaterial call.** Code comment left in paint.ts.
+3. **Even chunked full-grid spawn is unreliable on hard reconnects.** With
+   250 cells/frame across ~100 frames, mobile still intermittently blanked
+   the canvas on hard restart. Root cause appears to be sustained entity-
+   allocation pressure racing with CRDT replay under real-world network
+   jitter. Deterministic bugs eliminated; race conditions remained.
+4. **Final architecture: lazy spawn + chunked hydration applies.** Cell
+   entities are created ONLY for painted pixels (not all 25,444). The floor
+   GLB shows through as the baseline for unpainted cells. `syncCellsFromCrdt`
+   pushes changed bytes to an `applyQueue` instead of applying inline; a
+   drain system processes `APPLIES_PER_FRAME = 300` per frame. This means
+   the max per-frame entity-allocation burst is 300, regardless of how many
+   tiles arrive in a CRDT payload. Mobile handles this reliably.
+5. **UI layers must gate on `isSplashActive()`.** Otherwise UI (color picker,
+   help panel auto-open, leaderboard, drag catcher) bleeds through the
+   splash on mobile before hydration completes. Splash exports `isSplashActive`;
+   every mobile-relevant layer's `body()` early-returns `<UiEntity />` while
+   the splash is up.
 
-### Post-refactor perf shape
+### Post-refactor perf shape (final)
 
-- Boot: 1 GLB fetch (was 400)
-- Cell spawn: ~1.5s chunked (mobile) / ~0.5s (desktop) behind splash
-- CRDT hydration: unchanged (already chunked per PaintTile, ~275ms for full
-  canvas per HANDOFF's earlier CRDT migration notes)
-- Total load: splash lifts at max(2.5s min, spawn done, hydration done)
-- Render steady-state: 25,444 draw calls / frame. Mobile handles it; if we
-  ever need more headroom the next win is a single-texture render (Phase 3
-  LOD, currently deferred).
+- **Boot:** 1 GLB fetch (was 400)
+- **Cell entities at rest:** ~painted-pixel-count (~5,600 today, up to ~25,444
+  at 100% canvas saturation). Unpainted cells cost zero entities.
+- **Boot spawn cost:** just the floor GLB. No cell entities created at boot.
+- **Hydration:** CRDT tiles arrive, `syncCellsFromCrdt` queues per-cell applies,
+  drain runs at 300/frame. Full deployed canvas (~5,600 painted cells)
+  finishes hydrating in ~18-20 frames = ~0.6-1s past first tile.
+- **Splash gate:** `isSpawningCanvas() || isApplyingHydration() ||
+  !paintTelemetry().paintHydrated`, with a 2.5s minimum.
+- **Live paint:** one entry in `applyQueue`, drained the next frame. Instant.
+- **Steady-state render:** ~painted-pixel-count draw calls / frame. Way below
+  the old 25,444 baseline. Room to grow before we need a texture-baked LOD.
+
+### Function reference (paint.ts)
+
+- `spawnPaintCanvas()` — spawns ONLY the floor GLB. Runs once at boot.
+- `applyPaintIndex(id, index, force)` — lazy-spawns the cell entity if
+  `index !== PALETTE_NONE` and no entity exists; otherwise recolors.
+- `spawnCellEntity(id, index)` — internal lazy factory. Fast path from
+  applyPaintIndex; uses `parseCellIdFast` (unchecked) since ids come from
+  the trusted CRDT diff path.
+- `syncCellsFromCrdt()` — diffs PaintTile.cells shadows, pushes to applyQueue.
+- `drainApplyQueue()` — processes APPLIES_PER_FRAME items each frame.
+- `isApplyingHydration()` — splash-gate helper. True while queue non-empty.
 
 Previous session log preserved below.
 

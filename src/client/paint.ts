@@ -170,6 +170,7 @@ export function initPaintNet(): void {
 	engine.addSystem(() => {
 		syncPaletteFromCrdt()
 		syncCellsFromCrdt()
+		drainApplyQueue()
 	})
 }
 
@@ -190,6 +191,29 @@ function syncPaletteFromCrdt(): void {
 }
 
 let paintHydrated = false
+
+// Pending applies from CRDT diffs. Drained at APPLIES_PER_FRAME/frame so
+// hydration bursts (100 tiles × up to 256 changed bytes each) don't
+// hammer mobile with thousands of addEntity calls in one frame.
+type PendingApply = { id: string; index: number }
+const applyQueue: PendingApply[] = []
+const APPLIES_PER_FRAME = 300
+
+function drainApplyQueue(): void {
+	if (applyQueue.length === 0) return
+	const n = Math.min(APPLIES_PER_FRAME, applyQueue.length)
+	for (let i = 0; i < n; i++) {
+		const a = applyQueue[i]
+		applyPaintIndex(a.id, a.index, false)
+	}
+	applyQueue.splice(0, n)
+}
+
+/** True while the CRDT-driven apply queue is still draining. Used by
+ *  the loading splash gate. */
+export function isApplyingHydration(): boolean {
+	return applyQueue.length > 0
+}
 
 function syncCellsFromCrdt(): void {
 	let anyChange = false
@@ -219,7 +243,7 @@ function syncCellsFromCrdt(): void {
 			if (shadow[localIdx] === next) continue
 			shadow[localIdx] = next
 			const cellKey = joinCellKey(tileKey, localIdx)
-			applyPaintIndex(cellKeyToCellId(cellKey), next, false)
+			applyQueue.push({ id: cellKeyToCellId(cellKey), index: next })
 			anyChange = true
 		}
 	}
@@ -298,14 +322,64 @@ function cellMaterialForIndex(index: number) {
 
 
 // -------- Apply paint (flat recolor) --------
+//
+// Lazy-spawn: cell entities are created ONLY for painted pixels. Unpainted
+// cells (palette index 0) have no entity — the floor GLB shows through as
+// the baseline. This keeps mobile entity count at ~painted-pixel-count
+// (~5,600 on the current deployed canvas) instead of 25,444 for the full
+// grid, which is the difference between "loads reliably" and "randomly
+// blanks out" on mid-range phones.
 
 export function applyPaintIndex(id: string, index: number, force: boolean): void {
 	if (!force && renderedIndex.get(id) === index) return
 	renderedIndex.set(id, index)
-	const e = cellEntity.get(id)
-	if (e === undefined) return
+	let e = cellEntity.get(id)
+	if (e === undefined) {
+		if (index === PALETTE_NONE) return // no entity for unpainted cells
+		e = spawnCellEntity(id, index)
+		return
+	}
 	const mat = cellMaterialForIndex(index) ?? NONE_MAT
 	Material.setPbrMaterial(e, mat)
+}
+
+/** Lazy cell-entity factory. Creates the flat colored box for `id` and
+ *  wires it into cellEntity + renderedIndex. Returns the new entity.
+ *  Caller must have already validated cellId (parseable). */
+function spawnCellEntity(id: string, index: number): Entity {
+	const parsed = parseCellIdFast(id)
+	const { tx, tz, col, row } = parsed
+	const tileWorldX = tx * CELL + MAZE_ORIGIN_OFFSET_METERS
+	const tileWorldZ = tz * CELL + MAZE_ORIGIN_OFFSET_METERS
+	const wx = tileWorldX + (col + 0.5) * CELL_SIZE
+	const wz = tileWorldZ + (row + 0.5) * CELL_SIZE
+
+	const e = engine.addEntity()
+	Transform.create(e, {
+		position: Vector3.create(wx, FLAT_OFFSET + FLAT_THICKNESS / 2, wz),
+		scale:    Vector3.create(CELL_SIZE, FLAT_THICKNESS, CELL_SIZE),
+	})
+	MeshRenderer.setBox(e)
+	Material.setPbrMaterial(e, cellMaterialForIndex(index) ?? NONE_MAT)
+
+	cellEntity.set(id, e)
+	renderedIndex.set(id, index)
+	return e
+}
+
+/** Fast cellId parser — we know the format is deterministic ("tx,tz,0:col,row")
+ *  and only called from spawnCellEntity where the id came from cellKeyToCellId,
+ *  so we can skip validation. Avoids the overhead of parseCellId's map/checks. */
+function parseCellIdFast(id: string): { tx: number; tz: number; col: number; row: number } {
+	const colon = id.indexOf(':')
+	const head  = id.slice(0, colon).split(',')
+	const tail  = id.slice(colon + 1).split(',')
+	return {
+		tx:  +head[0],
+		tz:  +head[1],
+		col: +tail[0],
+		row: +tail[1],
+	}
 }
 
 
@@ -340,104 +414,46 @@ export function clearAllPaintState(): void {
 export function drainPaintOutbox(_max: number): string[] { return [] }
 
 
-// -------- spawnPaintCanvas: chunked boot spawn --------
+// -------- spawnPaintCanvas: lazy-spawn architecture --------
 //
-// Cells are spawned across multiple frames instead of one giant loop.
-// A single 25,444-cell synchronous burst overwhelms mobile GPU / material
-// allocation — users saw ~50% white cells and voids where entities or
-// materials silently failed to commit. Chunking gives the renderer a
-// chance to breathe between batches.
+// The floor GLB is the visible canvas. Individual cell entities are
+// created ONLY when a pixel becomes painted (either via CRDT hydration
+// or a live paint action). Unpainted cells never exist as entities.
 //
-// CELLS_PER_FRAME: sized so a full canvas spawns in <2s at 30fps on
-// mid-range mobile. Tune down if voids reappear on slower devices.
-const CELLS_PER_FRAME = 600
+// Why: on mobile, spawning all 25,444 cells at boot — even chunked —
+// intermittently blanks the canvas. Root cause appears to be sustained
+// entity-allocation pressure racing with CRDT replay. Cutting the entity
+// count to "only painted pixels" (~5,600 on the current canvas, 22% of
+// grid) eliminates the pressure entirely.
+//
+// Feet-based painting still works: worldToCellId is pure math and doesn't
+// need an entity. When the player paints an unpainted cell, the server
+// applies -> CRDT arrives -> applyPaintIndex lazy-creates the entity.
 
 let canvasSpawned = false
-let spawnQueue: Array<{ tx: number; tz: number; col: number; row: number }> = []
 
 /**
- * Boot the solid-floor canvas:
- *   1. Spawn the 320×320m floor GLB at world origin (single entity).
- *   2. Enqueue every paint cell coord; a per-frame system drains the
- *      queue in batches of CELLS_PER_FRAME.
- *
- * Runs exactly once per session. Called from client/index.ts::setupClient.
+ * Boot the solid-floor canvas. Just the floor GLB — no cells. Cells are
+ * created lazily by applyPaintIndex as CRDT paint bytes arrive.
  */
 export function spawnPaintCanvas(): void {
 	if (canvasSpawned) return
 	canvasSpawned = true
 
-	// 1. Floor.
 	const floor = engine.addEntity()
 	Transform.create(floor, { position: Vector3.create(0, 0, 0) })
 	GltfContainer.create(floor, {
 		src: 'assets/models/tile_floor.glb',
 		visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS,
 	})
-
-	// 2. Build the spawn queue — don't spawn entities yet. The drain system
-	// below spawns CELLS_PER_FRAME per frame.
-	for (let tz = 0; tz < MAZE_GRID_HEIGHT; tz++) {
-		for (let tx = 0; tx < MAZE_GRID_WIDTH; tx++) {
-			for (let row = 0; row < SIZE; row++) {
-				for (let col = 0; col < SIZE; col++) {
-					if (!cellOnFloor(tx, tz, col, row)) continue
-					spawnQueue.push({ tx, tz, col, row })
-				}
-			}
-		}
-	}
-	console.log(`[Place] paint canvas spawn queue: ${spawnQueue.length} cells (${CELLS_PER_FRAME}/frame)`)
-
-	const spawnStartMs = Date.now()
-	let cursor         = 0
-	const total        = spawnQueue.length
-	engine.addSystem(() => {
-		if (cursor >= total) return
-		const end = Math.min(cursor + CELLS_PER_FRAME, total)
-		for (let i = cursor; i < end; i++) {
-			const c = spawnQueue[i]
-			spawnOneCell(c.tx, c.tz, c.col, c.row)
-		}
-		cursor = end
-		if (cursor >= total) {
-			spawnQueue = [] // release memory
-			canvasSpawnComplete = true
-			console.log(
-				`[Place] paint canvas spawn COMPLETE: ${total} cells in ` +
-				`${Date.now() - spawnStartMs}ms`
-			)
-		}
-	})
+	console.log('[Place] floor GLB spawned; cells will spawn lazily as paint arrives')
 }
 
-let canvasSpawnComplete = false
-
-function spawnOneCell(tx: number, tz: number, col: number, row: number): void {
-	const tileWorldX = tx * CELL + MAZE_ORIGIN_OFFSET_METERS
-	const tileWorldZ = tz * CELL + MAZE_ORIGIN_OFFSET_METERS
-	const wx = tileWorldX + (col + 0.5) * CELL_SIZE
-	const wz = tileWorldZ + (row + 0.5) * CELL_SIZE
-	const id  = cellId(tx, tz, 0, col, row)
-	const key = cellIdToKey(id)
-	const preexisting = shadowLookup(key) ?? PALETTE_NONE
-
-	const e = engine.addEntity()
-	Transform.create(e, {
-		position: Vector3.create(wx, FLAT_OFFSET + FLAT_THICKNESS / 2, wz),
-		scale:    Vector3.create(CELL_SIZE, FLAT_THICKNESS, CELL_SIZE),
-	})
-	MeshRenderer.setBox(e)
-	Material.setPbrMaterial(e, cellMaterialForIndex(preexisting) ?? NONE_MAT)
-
-	cellEntity.set(id, e)
-	renderedIndex.set(id, preexisting)
-}
-
-/** True while the boot spawn is still draining the queue. Used by the
- *  loading splash gate so the splash stays up until every cell exists. */
+/** Legacy export kept so the loading splash still compiles. With lazy
+ *  spawn there's no separate "canvas is being built" stage — splash
+ *  gates on paintHydrated alone. */
 export function isSpawningCanvas(): boolean {
-	return canvasSpawned && !canvasSpawnComplete
+	return false
 }
 
 

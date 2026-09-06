@@ -14,6 +14,7 @@ import { Color4 } from '@dcl/sdk/math'
 import { isMobile } from '@dcl/sdk/platform'
 
 import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
+import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { playUiClick } from 'src/client/audio'
 import { UI_THEME } from 'src/client/ui/theme/settings'
@@ -48,6 +49,7 @@ class HelpPanelLayer extends Layer {
 	}
 
 	body() {
+		if (isSplashActive()) return <UiEntity />
 		const mobile = isMobile()
 		// Mobile: 2× the panel + content, and vertically centered on the
 		// 1600×720 virtual screen (top bar is hidden on mobile so we don't
