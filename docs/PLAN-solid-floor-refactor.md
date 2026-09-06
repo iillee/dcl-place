@@ -1,9 +1,13 @@
 # Plan — Solid-Floor Refactor
 
-**Status:** proposed, scheduled for next week
+**Status:** ✅ SHIPPED on branch `loadoptimization` (pending deploy verification against the live persisted canvas). See HANDOFF.md for the post-refactor cheatsheet.
 **Owner:** luke (art) + agent (code)
-**Estimated effort:** ~2 hours code + Blender remodel time
-**Risk:** low (contained to client-side spawn path; server, CRDT, persistence, UI untouched)
+**Actual outcome:** ~1,450 LOC of maze machinery deleted, 400 GLB fetches → 1,
+synchronous spawn (no reveal cascade), all interior cells paintable, outer
+perimeter arms trimmed so nothing overhangs the floor GLB. Interior cellIds
+byte-identical to the pre-refactor format → persisted user art preserved.
+**Risk assessment (retrospective):** low, as predicted. Server, CRDT, persistence,
+UI untouched. Only client-side spawn path changed.
 
 ---
 

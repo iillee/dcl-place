@@ -5,7 +5,7 @@
  * before main() seals the engine.
  *
  * Schemas are shared. Server-owned entities (LeaderboardState, PaintCoverage,
- * PaletteEntry, PaintCell) are created + syncEntity'd only on the server.
+ * PaletteEntry, PaintTile) are created + syncEntity'd only on the server.
  * Clients observe replicas — they must not syncEntity those.
  *
  * SeedHolder remains client-authored until seed ownership moves server-side.
@@ -13,21 +13,8 @@
 
 import { engine, Schemas } from '@dcl/sdk/ecs'
 
-// MARK: SeedHolder
-export const SeedHolder = engine.defineComponent('maze::seed-holder', { seed: Schemas.Int })
-export const seedHolder = engine.addEntity()
-SeedHolder.create(seedHolder, { seed: 0 })
-
 // MARK: LeaderboardState
 export const LeaderboardState = engine.defineComponent('leaderboard::state', { json: Schemas.String })
-
-// MARK: PaintCell (DEPRECATED — see PaintTile below)
-// Retained only so any deploy-in-flight clients still statically link the
-// component id without crashing. Server no longer writes it, client no
-// longer reads it. Safe to delete after one full deploy cycle.
-export const PaintCell = engine.defineComponent('paint::cell', {
-	index: Schemas.Byte,
-})
 
 // MARK: PaintTile
 // One CRDT entity per (tx, tz, level) tile carrying a packed byte-array

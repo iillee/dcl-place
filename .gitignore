@@ -21,3 +21,7 @@ backups/raw-*.log
 
 # Timelapse frames + rendered video (regenerated from Discord archive)
 timelapse/
+
+# 3D source files (Blender / SketchUp) — exports live in assets/models/*.glb
+assets/blender/
+assets/sketchup/

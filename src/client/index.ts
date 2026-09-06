@@ -1,29 +1,17 @@
 /**
- * client/index.ts — client runtime orchestrator.
+ * client/index.ts — client runtime orchestrator (solid-floor edition).
  *
- * Wires the client-side modules together in a controlled boot order.
- *
- * Feature homes:
- *   - client/maze/*          — tile-grid data + spawn cascade
- *   - client/paint           — paint cell rendering + CRDT observer
- *   - client/placeInput      — feet-tracker + highlight cube + F hotkey
- *   - client/clientHandler   — network boundary (room.on / room.send)
- *   - client/audio           — music + UI SFX
- *   - client/topDownCamera   — spectator VirtualCamera
- *   - client/touchControls   — mobile on-screen button remapping
- *   - client/ui/*            — HUD layers + theme (React-ECS via DUCK)
+ * Boots the client-side modules in a controlled order. The maze system
+ * has been replaced by a single 320×320m floor GLB + deterministic
+ * paint-cell spawn (see paint.ts::spawnPaintCanvas). No seed watcher,
+ * no per-tile GLB fetches, no reveal cascade.
  */
 
 import { engine } from '@dcl/sdk/ecs'
-import { syncEntity } from '@dcl/sdk/network'
-
-import { SeedHolder, seedHolder } from 'src/shared/components'
-import { SEED_NETWORK_ID } from 'src/shared/paintGrid'
 
 import { initAudio } from 'src/client/audio'
 import { initClientHandler } from 'src/client/clientHandler'
-import { initMazeNet, rebuildMaze } from 'src/client/maze/rebuild'
-import { initPaintNet } from 'src/client/paint'
+import { initPaintNet, spawnPaintCanvas } from 'src/client/paint'
 import { initFeetPaint, initPaintHotkey } from 'src/client/placeInput'
 import { initPlayerNet } from 'src/client/player'
 import { setupUi } from 'src/client/ui'
@@ -35,43 +23,15 @@ import { initLeaderboardHotkey } from 'src/client/ui/layers/layer.leaderboard'
 import { isTopDownActive, toggleTopDownCamera } from 'src/client/topDownCamera'
 
 
-// ─── Seed watcher ───────────────────────────────────────────────────
-// Rebuilds the tile grid whenever the synced seed changes. dcl/place has
-// no round resets, so in practice this fires exactly once per session
-// (when the server's seed CRDT-replicates to us, or when the first-joiner
-// path below seeds it).
-let currentSeed = 0
-engine.addSystem(() => {
-	const s = SeedHolder.get(seedHolder).seed
-	if (s !== 0 && s !== currentSeed) {
-		currentSeed = s
-		rebuildMaze(s)
-	}
-})
-
-
-// ─── First-joiner initialization ────────────────────────────────────
-// If nobody's set the seed after a grace period, we're the first player
-// in an empty realm — pick a fixed non-zero seed so the tile grid spawns.
-// Subsequent joiners receive the current seed via CRDT before their grace
-// elapses and skip this path.
-let initTimer = 0
-let initDone = false
-const INIT_GRACE = 1.5 // seconds
-engine.addSystem((dt: number) => {
-	if (initDone) return
-	initTimer += dt
-	if (initTimer < INIT_GRACE) return
-	initDone = true
-	if (SeedHolder.get(seedHolder).seed === 0) {
-		SeedHolder.createOrReplace(seedHolder, { seed: 1 })
-	}
-})
-
-
 // ─── setupClient — boot sequence ────────────────────────────────────
 export async function setupClient(): Promise<void> {
 	initAudio()
+
+	// Spawn the floor GLB + all 25,600 paint cells in one deterministic
+	// pass. Synchronous — no CRDT wait, no reveal cascade. Runs before
+	// paint-net observers so cells are ready to recolor when the first
+	// PaintTile CRDT payload arrives.
+	spawnPaintCanvas()
 
 	// Composite-lever scrubber. main.composite carries a decorative lever
 	// entity from an earlier iteration; we strip it (and anything else
@@ -85,52 +45,29 @@ export async function setupClient(): Promise<void> {
 		}
 	})
 
-	// Tap-to-place: feet-tracker + highlight cube.
 	initFeetPaint()
-
-	// Desktop hotkey: `F` triggers PAINT (mirrors the paint button).
 	initPaintHotkey()
 
-	// Spectator: per-frame drag-delta poll (no-op unless drag is active).
 	engine.addSystem(dragPollSystem)
 
-	// Desktop hotkeys: `3` toggles help, `4` toggles leaderboard.
 	initHelpPanelHotkey()
 	initLeaderboardHotkey()
 
-	// Reshape the mobile on-screen button cluster (no-op on desktop):
-	// eye = spectator, E = mute, F = leaderboard, + = help.
 	setupTouchControls()
 
-	// Wire CRDT observers. PaintCell / PaletteEntry / PaintCoverage /
-	// LeaderboardState are server-owned (syncEntity only on the server);
-	// clients observe replicas.
 	initPaintNet()
-	initMazeNet()
 	initPlayerNet()
 
-	// Register the network boundary LAST so `room.onMessage` subscribers
-	// above are all in place before the first message can arrive.
 	initClientHandler()
 
-	// SeedHolder is client-authored (first-joiner writes it) — sync it so
-	// late joiners inherit the value instead of racing the grace period.
-	syncEntity(seedHolder, [SeedHolder.componentId], SEED_NETWORK_ID)
-
-	// Spectator VirtualCamera (inactive until the HUD button toggles it).
 	setupTopDownCamera()
 
 	setupUi()
 
-	// ─── Welcome flow ──────────────────────────────────────────────────────
-	// After the load splash clears (~3s), auto-activate spectator camera
-	// so first-time players immediately see the canvas from above, and
-	// auto-open the help panel so they know what to do. First tap closes
-	// the help panel (see layer.helpPanel onMouseDown) and they're playing.
-	// Runs once per scene entry only.
+	// ─── Welcome flow ────────────────────────────────────────────────
 	let welcomeTimer = 0
 	let welcomeDone  = false
-	const WELCOME_DELAY = 3.0 // seconds after boot
+	const WELCOME_DELAY = 3.0
 	engine.addSystem((dt: number) => {
 		if (welcomeDone) return
 		welcomeTimer += dt

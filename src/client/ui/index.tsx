@@ -15,7 +15,7 @@ import { helpPanelLayer }   from 'src/client/ui/layers/layer.helpPanel'
 import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 import { topBarLayer }      from 'src/client/ui/layers/layer.topBar'
 import { topDownPanLayer }  from 'src/client/ui/layers/layer.topDownPan'
-import { loadingSplashLayer }  from 'src/client/ui/layers/layer.loadingSplash'
+import { loadingSplashLayer } from 'src/client/ui/layers/layer.loadingSplash'
 
 
 // MARK: setupUi
@@ -32,6 +32,9 @@ export function setupUi() {
 			leaderboardLayer,
 			colorPickerLayer,
 			// Splash must be last so it renders on top of every other layer.
+			// Gated on !isSpawningCanvas() && paintHydrated — lifts once the
+			// chunked cell spawn + CRDT hydration are both complete. Kept for
+			// desktop too so low-perf machines get the same clean load.
 			loadingSplashLayer,
 		],
 	})
