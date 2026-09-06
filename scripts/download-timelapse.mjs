@@ -26,7 +26,11 @@ import { spawn } from 'node:child_process'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
-const OUT_DIR = join(ROOT, 'timelapse')
+// OUT_DIR lives OUTSIDE the scene project so its ~100 MB of frames + video
+// don't bloat the deploy bundle. Repo root is `.../creator-hub/Scenes/dcl-place`;
+// timelapse sits alongside at `.../creator-hub/Scenes/dclplace_timelapse`.
+// Override with the TIMELAPSE_DIR env var if you keep it elsewhere.
+const OUT_DIR = process.env.TIMELAPSE_DIR || join(ROOT, '..', 'dclplace_timelapse')
 const FRAMES_DIR = join(OUT_DIR, 'frames')
 
 // ---- env loading (tiny .env parser, no dep) ----

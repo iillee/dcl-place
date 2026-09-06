@@ -12,6 +12,7 @@
  */
 
 import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
+import { Color4 } from '@dcl/sdk/math'
 
 import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
 
@@ -71,6 +72,14 @@ class LoadingSplashLayer extends Layer {
 	body() {
 		if (!isSplashActive()) return <UiEntity />
 
+		// Two-layer splash to defeat the mobile texture-load race:
+		//   1. Outer entity = opaque solid color. Renders immediately on
+		//      mount, so even if the PNG texture hasn't decoded yet the
+		//      scene + UI behind us are fully covered.
+		//   2. Inner entity = the actual dclplace.png image, layered on
+		//      top. Fades in the moment the texture is resident.
+		// Without (1), mobile cold-loads flashed the level + HUD for a
+		// frame while the splash texture was still fetching/decoding.
 		return (
 			<UiEntity
 				key         = "ui_LoadingSplash_root"
@@ -81,11 +90,21 @@ class LoadingSplashLayer extends Layer {
 					justifyContent: 'center',
 					alignItems    : 'center',
 				}}
-				uiBackground = {{
-					textureMode: 'stretch',
-					texture    : { src: SPLASH_IMAGE },
-				}}
-			/>
+				uiBackground = {{ color: Color4.create(0, 0, 0, 1) }}
+			>
+				<UiEntity
+					key         = "ui_LoadingSplash_image"
+					uiTransform = {{
+						width       : '100%',
+						height      : '100%',
+						positionType: 'absolute',
+					}}
+					uiBackground = {{
+						textureMode: 'stretch',
+						texture    : { src: SPLASH_IMAGE },
+					}}
+				/>
+			</UiEntity>
 		)
 	}
 }
