@@ -4,7 +4,94 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main` (all work merged)
-**This session:** 🧽 **Cleanup sweep + sequential-spawn architecture (grey-fill after hydration).**
+**This session:** 🌐 **Dual-deploy setup — same code, second realm at Genesis estate `-9,-91`..`10,-72`.**
+
+Added a scene.json variant system so we can deploy the same codebase to two
+realms with fully isolated pixel-canvas Storage. World deploy
+(`dclplace.dcl.eth`) stays the default; new Genesis deploy targets a friend's
+20×20 estate. Both share every line of `src/` — only `scene.json` differs.
+
+### Files added
+- `scene.world.json` — canonical World variant (identical to old scene.json,
+  keeps `worldConfiguration.name = dclplace.dcl.eth`).
+- `scene.genesis.json` — Genesis variant. Base `-9,-91`, 400 parcels
+  (x:-9..10, y:-91..-72). `worldConfiguration` removed. Title
+  `dclplace (genesis)` so you can tell the two apart in the map/loading UI.
+- `scripts/swap-scene.mjs` — copies the chosen variant into `scene.json`
+  before deploy. Writes `scene.json.bak` on every swap. Sanity-checks that
+  the World variant has `worldConfiguration.name` and the Genesis variant
+  does not — refuses to activate a mis-configured file.
+
+### npm scripts
+```
+npm run scene:status       # which variant is active in scene.json
+npm run scene:world        # swap in the World variant (no deploy)
+npm run scene:genesis      # swap in the Genesis variant (no deploy)
+npm run deploy:world       # swap + build:prod + deploy
+npm run deploy:genesis     # swap + build:prod + deploy
+```
+
+### Why this works with zero code changes
+- `Storage` (canvas blob, leaderboard) and `EnvVar` (Discord webhook) are
+  namespaced per deployment by the auth server. Two deploys = two Storage
+  namespaces automatically. `dcl-place:canvas:v1` on the World is a
+  different blob from the same key on Genesis.
+- Scene-local coord math (paint grid, worldToCellId, floor GLB placement)
+  is base-parcel-relative. Works identically at any Genesis coord.
+- The 320×320 m floor GLB fits the 20×20 estate exactly.
+
+### After first Genesis deploy — MUST do
+1. Set the Genesis-specific webhook (Storage/EnvVars are provisioned on
+   first deploy, so do this AFTER the initial publish):
+   ```
+   npx sdk-commands storage env set DISCORD_SNAPSHOT_WEBHOOK \
+     --value "https://discord.com/api/webhooks/GENESIS_URL" \
+     --target <genesis-realm-identifier>
+   ```
+2. Verify Storage isolation with a smoke test:
+   ```
+   npx sdk-commands storage scene get "dcl-place:canvas:v1" --target <world>
+   npx sdk-commands storage scene get "dcl-place:canvas:v1" --target <genesis>
+   ```
+   Genesis blob should be empty on first read.
+3. If using `scripts/download-timelapse.mjs`, add a second
+   `DISCORD_SNAPSHOT_CHANNEL_ID` env for the Genesis archive channel — or
+   accept mixed frames.
+
+### Gitignore
+- `scene.json.bak` added — swap script's safety copy.
+
+### `.gitignore` gotcha caught during setup
+Root `.gitignore` has `*.js` (SDK convention). Doesn't affect `.mjs`, so
+`scripts/swap-scene.mjs` is tracked correctly.
+
+### Branch
+This work is on `genesis-deploy` branch off `main`. Merge to `main` once
+the first Genesis deploy has been validated in-world.
+
+### Deploy workflow (documented, not yet run)
+```bash
+# Publish to World (current default):
+npm run deploy:world
+
+# Publish to Genesis (needs your friend's wallet to be estate owner or operator):
+npm run deploy:genesis
+```
+The sdk-commands deploy CLI signs against LAND ownership for Genesis. If
+you're not the estate owner, add your wallet as an operator on
+`https://builder.decentraland.org/land` first.
+
+### Design invariants preserved
+- One repo, one source of truth for `src/`. Every future fix ships to both
+  realms with a single `git merge`.
+- No feature flags, no runtime realm sniffing. Deployment differences live
+  entirely in `scene.*.json`.
+
+Previous session log preserved below.
+
+---
+
+**Previous session:** 🧽 **Cleanup sweep + sequential-spawn architecture (grey-fill after hydration).**
 
 Two focused pushes:
 
