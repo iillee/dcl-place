@@ -11,7 +11,7 @@
  * cycle-rollover override since dcl/place has no rounds).
  */
 
-import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
+import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
 
 import { Layer, ZoneType } from '@stom66/dcl-ui-component-kit'
@@ -61,6 +61,45 @@ export function isSplashActive(): boolean {
 }
 
 
+// -------- Progress readout --------
+//
+// Real progress is only partially observable from the client (we don't
+// know total painted-pixel count until hydration is done, and on an
+// empty canvas no tiles ever arrive), so we use a simple time-based
+// ease as the base curve and snap to 100% the moment hydration flips.
+//
+//   - Base: eases 0 → 95% over ~6s of wall-time with an ease-out curve
+//     (fast at first, slowing as it approaches 95). Always advancing,
+//     never stalls waiting on a signal that may never come.
+//   - Snap: when paintTelemetry().paintHydrated flips AND the apply
+//     queue has drained, target jumps to 100%.
+//
+// A `lastShown` latch enforces monotonicity: the displayed number
+// never decreases across frames.
+
+const BASE_DURATION_MS = 6000
+let lastShownProgress = 0
+
+function computeProgressPct(): number {
+	const t = paintTelemetry()
+
+	let target: number
+	if (t.paintHydrated && !isApplyingHydration()) {
+		target = 100
+	} else {
+		const elapsed = Date.now() - coldOpenStartedAtMs
+		const linear = Math.min(1, elapsed / BASE_DURATION_MS)
+		// Ease-out: 1 - (1 - x)^2. Fast start, gentle approach to 95%.
+		const eased = 1 - Math.pow(1 - linear, 2)
+		target = eased * 95
+	}
+
+	// Monotonic: never tick backward.
+	lastShownProgress = Math.max(lastShownProgress, target)
+	return Math.min(100, Math.floor(lastShownProgress))
+}
+
+
 class LoadingSplashLayer extends Layer {
 	constructor() {
 		super({
@@ -104,6 +143,36 @@ class LoadingSplashLayer extends Layer {
 						texture    : { src: SPLASH_IMAGE },
 					}}
 				/>
+				{/* Progress readout — bottom 25% of screen, centered.
+				    Sits below the splash art so it never overlaps the wordmark.
+				    Percentage number is big + bold; label sits underneath. */}
+				<UiEntity
+					key         = "ui_LoadingSplash_progress"
+					uiTransform = {{
+						width         : '100%',
+						height        : '25%',
+						positionType  : 'absolute',
+						position      : { top: '75%', left: 0 },
+						flexDirection : 'column',
+						justifyContent: 'center',
+						alignItems    : 'center',
+					}}
+				>
+					<Label
+						value     = "Loading canvas"
+						fontSize  = {22}
+						color     = {Color4.Black()}
+						textAlign = "middle-center"
+						uiTransform = {{ width: '100%', height: 28 }}
+					/>
+					<Label
+						value     = {`${computeProgressPct()}%`}
+						fontSize  = {56}
+						color     = {Color4.Black()}
+						textAlign = "middle-center"
+						uiTransform = {{ width: '100%', height: 64 }}
+					/>
+				</UiEntity>
 			</UiEntity>
 		)
 	}

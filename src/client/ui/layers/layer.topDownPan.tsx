@@ -52,7 +52,13 @@ const DPAD_MARGIN_BOTTOM = 440  // above the native mobile action buttons
 // visual weight.
 const ZOOM_BTN            = 60
 const ZOOM_GAP            = 8
-const ZOOM_MARGIN_MOBILE  = { right: 180, bottom: 290 } // down-left of d-pad cluster
+// Mobile: horizontal [+][-] centered below the d-pad. Horizontal (not
+// stacked) keeps the cluster short (60px tall vs 128) so it can't
+// overlap the native action-button row (help / mute / spectator) on
+// phones with tighter safe-area insets. Centered under the d-pad
+// (d-pad occupies right 96..312, so cluster centered at right 204 →
+// right:140 for a 128-wide cluster).
+const ZOOM_MARGIN_MOBILE  = { right: 140, bottom: 340 } // horizontal, centered below d-pad
 const ZOOM_MARGIN_DESKTOP = { right: 24,  bottom: 200 } // above native jump button on desktop
 const ZOOM_GLYPH_BAR      = 4  // thickness of the + / - glyph bars
 const ZOOM_GLYPH_LEN      = 24 // length of the + / - glyph bars
@@ -289,18 +295,19 @@ function ZoomGlyph(props: { kind: 'in' | 'out'; color: Color4 }) {
  * edge above the native jump button.
  */
 function ZoomCluster() {
-	const margin = isMobile() ? ZOOM_MARGIN_MOBILE : ZOOM_MARGIN_DESKTOP
+	const mobile = isMobile()
+	const margin = mobile ? ZOOM_MARGIN_MOBILE : ZOOM_MARGIN_DESKTOP
 	return (
 		<UiEntity
 			uiTransform={{
 				positionType : 'absolute',
 				position     : { right: margin.right, bottom: margin.bottom },
-				flexDirection: 'column',
+				flexDirection: mobile ? 'row' : 'column',
 				alignItems   : 'center',
 			}}
 		>
 			<ZoomButton kind="in"  enabled={canZoomIn()}  keyId="zoom_in" />
-			<UiEntity uiTransform={{ height: ZOOM_GAP }} />
+			<UiEntity uiTransform={mobile ? { width: 24 } : { height: ZOOM_GAP }} />
 			<ZoomButton kind="out" enabled={canZoomOut()} keyId="zoom_out" />
 		</UiEntity>
 	)
