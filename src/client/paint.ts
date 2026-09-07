@@ -156,6 +156,7 @@ export function initPaintNet(): void {
 		syncPaletteFromCrdt()
 		syncCellsFromCrdt()
 		drainApplyQueue()
+		drainSpawnQueue()
 	})
 }
 
@@ -435,27 +436,34 @@ export function clearAllPaintState(): void {
 export function drainPaintOutbox(_max: number): string[] { return [] }
 
 
-// -------- spawnPaintCanvas: lazy-spawn architecture --------
+// -------- spawnPaintCanvas: sequential hydration + grey-fill spawn --------
 //
-// The floor GLB is the visible canvas. Individual cell entities are
-// created ONLY when a pixel becomes painted (either via CRDT hydration
-// or a live paint action). Unpainted cells never exist as entities.
+// Two-phase load with a strict 300 addEntity/frame ceiling. Mobile's
+// entity allocator can't sustain more than ~300 alloc/frame under CRDT
+// replay pressure without dropping cells (blank-canvas regression).
 //
-// Why: on mobile, spawning all 25,444 cells at boot — even chunked —
-// intermittently blanks the canvas. Root cause appears to be sustained
-// entity-allocation pressure racing with CRDT replay. Cutting the entity
-// count to "only painted pixels" (~5,600 on the current canvas, 22% of
-// grid) eliminates the pressure entirely.
+// Phase 1 (during initial hydration):
+//   CRDT paint bytes arrive -> applyQueue -> drainApplyQueue @ 300/frame.
+//   Each drain lazy-spawns a coloured cell entity via applyPaintIndex.
+//   No grey-fill happening yet. Unpainted areas show the floor GLB.
 //
-// Feet-based painting still works: worldToCellId is pure math and doesn't
-// need an entity. When the player paints an unpainted cell, the server
-// applies -> CRDT arrives -> applyPaintIndex lazy-creates the entity.
+// Phase 2 (after applyQueue drains completely):
+//   drainSpawnQueue starts. Any interior cell that still has no entity
+//   gets spawned at PALETTE_NONE (light grey). Also 300/frame so nothing
+//   competes with the CRDT path if a late live-paint arrives.
+//
+// Splash gate stays up through both phases. Peak allocation is bounded
+// to 300/frame at all times. Total load takes ~1s longer on mobile
+// (grey fill is deferred) but the canvas ends fully populated.
 
 let canvasSpawned = false
+const spawnQueue: string[] = []
+const SPAWN_PER_FRAME = 300
 
 /**
- * Boot the solid-floor canvas. Just the floor GLB — no cells. Cells are
- * created lazily by applyPaintIndex as CRDT paint bytes arrive.
+ * Boot the canvas: spawn the floor GLB and enqueue every interior paint
+ * cell for grey-fill. Draining is deferred until CRDT hydration finishes
+ * (see drainSpawnQueue below).
  */
 export function spawnPaintCanvas(): void {
 	if (canvasSpawned) return
@@ -467,14 +475,51 @@ export function spawnPaintCanvas(): void {
 		src: 'assets/models/tile_floor.glb',
 		visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS,
 	})
-	console.log('[Place] floor GLB spawned; cells will spawn lazily as paint arrives')
+
+	for (let tx = 0; tx < MAZE_GRID_WIDTH; tx++) {
+		for (let tz = 0; tz < MAZE_GRID_HEIGHT; tz++) {
+			for (let row = 0; row < SIZE; row++) {
+				for (let col = 0; col < SIZE; col++) {
+					if (!cellOnFloor(tx, tz, col, row)) continue
+					spawnQueue.push(`${tx},${tz},0:${col},${row}`)
+				}
+			}
+		}
+	}
+	console.log(`[Place] floor GLB spawned; ${spawnQueue.length} cells queued for grey-fill (deferred to after hydration)`)
 }
 
-/** Legacy export kept so the loading splash still compiles. With lazy
- *  spawn there's no separate "canvas is being built" stage — splash
- *  gates on paintHydrated alone. */
+/** Drain grey-fill queue — but ONLY after the CRDT applyQueue is empty
+ *  AND paintHydrated has flipped. This prevents concurrent spawns from
+ *  the two queues from breaching the 300/frame mobile allocation ceiling. */
+function drainSpawnQueue(): void {
+	if (spawnQueue.length === 0) return
+	// Gate: never spawn grey cells while CRDT applies are still draining
+	// (paints are higher priority; also we don't want their allocations
+	// competing with ours). Also wait until hydration signal has flipped
+	// so we know the initial burst is fully in flight.
+	if (!paintHydrated) return
+	if (applyQueue.length > 0) return
+
+	const n = Math.min(SPAWN_PER_FRAME, spawnQueue.length)
+	let spawned = 0
+	for (let i = 0; i < n; i++) {
+		const id = spawnQueue[i]
+		if (cellEntity.has(id)) continue // painted before its turn
+		spawnCellEntity(id, PALETTE_NONE)
+		spawned++
+	}
+	spawnQueue.splice(0, n)
+	if (spawnQueue.length === 0) {
+		console.log(`[Place] grey-fill complete (last batch spawned ${spawned})`)
+	}
+}
+
+/** True while the boot spawn cascade is still filling in the grey grid.
+ *  Loading splash gates on this so players don't see a half-populated
+ *  canvas. */
 export function isSpawningCanvas(): boolean {
-	return false
+	return spawnQueue.length > 0
 }
 
 

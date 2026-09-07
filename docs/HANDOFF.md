@@ -4,7 +4,69 @@
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
 **Branch:** `main` (all work merged)
-**This session:** 🧹 **Post-deploy polish sweep — known gaps closed, mobile splash + UX fixes, CI green.**
+**This session:** 🧽 **Cleanup sweep + sequential-spawn architecture (grey-fill after hydration).**
+
+Two focused pushes:
+
+### 1. Cleanup sweep (Tiers 1-3 + docs)
+
+Ripped ~1,200 LOC of dead code that had been dragging behind the fork:
+- **Tier 1** — default SDK7 scaffolding never wired into main() (`src/components.ts`,
+  `factory.ts`, `systems.ts`, `ui.tsx`, `utils.ts`). ~180 LOC.
+- **Tier 2** — unused UI kit under `src/client/ui/components/` (7 files) +
+  `utils/serverStats.ts` + `utils/sizing.ts`. Zero external imports.
+- **Tier 3** — legacy team/round-reset/eventBus plumbing threaded through every
+  layer. Deleted `src/shared/team.ts`, `src/shared/utils/eventBus.ts`,
+  `src/client/clientEvents.ts`, `src/server/serverEvents.ts`. Simplified
+  `palette.ts` (single `UNPAINTED_COLOR` const replacing `TEAM_COLORS[None]`),
+  `paintState.ts` (dropped `seedTeamPalette()` + `applyPaint()`), `messages.ts`
+  (dropped `teamAssigned`, `roundReset`, `switchTeam`, `paintTick`), server.ts,
+  client paint/handler/player.
+- Rewrote `docs/DESIGN.md` for current architecture (was hackathon-plan
+  document, now durable design). Deleted `docs/PLAN-solid-floor-refactor.md`
+  (work done). Fixed `README.md` architecture tree (referenced deleted files).
+- Updated CI workflow: `actions/checkout@v2 → v4`, `setup-node@v1 → v4`,
+  Node 24 (broken label) → Node 22 LTS, `npm install → npm ci` with cache.
+
+### 2. Sequential-spawn architecture (grey unpainted cells)
+
+Player feedback: lazy-spawn (only painted cells got entities) looked
+"empty" — unpainted areas showed the floor GLB with visible seams/voids.
+Switched to a two-phase spawn model that fills every interior cell with
+a light-grey `PALETTE_NONE` plane after hydration finishes.
+
+First attempt (concurrent 300/frame apply + 600/frame spawn = up to
+900 addEntity/frame combined) broke mobile immediately — same failure
+mode HANDOFF section "lessons learned" already documented. Reverted
+without deploying.
+
+Final architecture:
+- **Phase 1 (initial hydration):** CRDT paints drain via `applyQueue` at
+  300/frame; `spawnQueue` is GATED off. Unpainted areas show floor GLB.
+- **Phase 2 (grey-fill):** `drainSpawnQueue()` starts ONLY when
+  `paintHydrated && applyQueue.length === 0`. Fills grey planes at
+  300/frame for cells that don't yet have an entity.
+- **Peak allocation is bounded to 300/frame at all times.** No
+  concurrent spawn sources.
+- Live paints post-hydration take the existing `applyPaintIndex` lazy
+  path (cell already exists → recolour; or spawn on demand).
+- Splash gate:
+  `isSpawningCanvas() || isApplyingHydration() || !paintHydrated`.
+  Now correctly holds through both phases.
+
+Mobile tested working. ~1s longer total load than pure lazy-spawn, canvas
+ends fully populated with uniform grey unpainted cells.
+
+### Files touched this session
+`src/client/paint.ts` (spawn architecture), 20 files deleted (cleanup),
+`docs/DESIGN.md` (rewrite + spawn phase update), `docs/HANDOFF.md`
+(this entry), `README.md`, `.github/workflows/ci.yml`.
+
+Previous session log preserved below.
+
+---
+
+**Previous session:** 🧹 **Post-deploy polish sweep — known gaps closed, mobile splash + UX fixes, CI green.**
 
 Cleared every item from the previous session's ⚠️ Known Gaps list plus a
 handful of playtest reports. Highlights:
@@ -151,15 +213,25 @@ The lessons compound and are all still relevant — don't undo any of them:
 
 ### Function reference (paint.ts)
 
-- `spawnPaintCanvas()` — spawns ONLY the floor GLB. Runs once at boot.
-- `applyPaintIndex(id, index, force)` — lazy-spawns the cell entity if
-  `index !== PALETTE_NONE` and no entity exists; otherwise recolors.
-- `spawnCellEntity(id, index)` — internal lazy factory. Fast path from
-  applyPaintIndex; uses `parseCellIdFast` (unchecked) since ids come from
-  the trusted CRDT diff path.
-- `syncCellsFromCrdt()` — diffs PaintTile.cells shadows, pushes to applyQueue.
-- `drainApplyQueue()` — processes APPLIES_PER_FRAME items each frame.
-- `isApplyingHydration()` — splash-gate helper. True while queue non-empty.
+- `spawnPaintCanvas()` — spawns the floor GLB, then enqueues every
+  interior cell id into `spawnQueue` for grey-fill (Phase 2). Runs once at boot.
+- `applyPaintIndex(id, index, force)` — recolors an existing cell, or
+  lazy-spawns one with the correct color if `index !== PALETTE_NONE`
+  and no entity exists yet.
+- `spawnCellEntity(id, index)` — internal factory used by both drain
+  paths. Uses `parseCellIdFast` (unchecked) since ids come from trusted sources.
+- `syncCellsFromCrdt()` — diffs PaintTile.cells shadows, pushes changes
+  to `applyQueue`.
+- `drainApplyQueue()` — processes SPAWN_PER_FRAME (300) items each frame.
+  Phase 1 spawn source.
+- `drainSpawnQueue()` — grey-fill drain. Gated: only runs when
+  `paintHydrated && applyQueue.length === 0`. Spawns at 300/frame.
+  Phase 2 spawn source.
+- `isApplyingHydration()` — splash-gate helper. True while applyQueue
+  is draining OR within the sticky-settle window post-hydration (see
+  `hydrationFullySettled` latch).
+- `isSpawningCanvas()` — splash-gate helper. True while grey-fill
+  spawnQueue is still draining.
 
 Previous session log preserved below.
 
