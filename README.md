@@ -10,10 +10,6 @@ A mobile-first Decentraland re-imagining of Reddit's r/place: a single giant wal
 
 ![dcl/place](assets/images/dclplace.png)
 
-![Canvas timelapse](docs/timelapse.gif)
-
-> The canvas evolving over its lifetime. Frames auto-posted by the server to a Discord channel every 5 minutes; the GIF above is stitched from that archive.
-
 ---
 
 ## The pitch
@@ -23,6 +19,10 @@ A mobile-first Decentraland re-imagining of Reddit's r/place: a single giant wal
 - **8-color palette.** Classic r/place restraint — every collaboration decision matters.
 - **Mobile-first.** Tap-to-place is better on touch than mouse; every affordance works one-handed.
 - **Automatic timelapse.** The server posts periodic PNG snapshots to a Discord webhook — the channel *is* the archive.
+
+![Canvas timelapse](docs/timelapse.gif)
+
+> The canvas evolving over its lifetime. Frames auto-posted by the server to a Discord channel every 5 minutes; the GIF above is stitched from that archive.
 
 ---
 
