@@ -76,7 +76,10 @@ class HelpPanelLayer extends Layer {
 					borderColor   : Color4.create(1, 1, 1, 0.75),
 					flexDirection : 'column',
 					alignItems    : 'stretch',
-					justifyContent: 'flex-start',
+					// Desktop: vertically center content (looks balanced now that
+					// the version chip is gone). Mobile keeps top-anchored layout
+					// because it has custom spacing (title bottom-margin: 40).
+					justifyContent: mobile ? 'flex-start' : 'center',
 				}}
 				uiBackground = {{ color: colors.statsBg }}
 				// Tap-to-close is handled by an absolute-positioned overlay child
