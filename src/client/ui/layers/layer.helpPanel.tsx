@@ -18,7 +18,6 @@ import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { playUiClick } from 'src/client/audio'
 import { UI_THEME } from 'src/client/ui/theme/settings'
-import { VERSION }  from 'src/shared/data/version'
 // Cycle-safe: only accessed inside toggleHelpPanel(), never at module load.
 import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 
@@ -27,8 +26,8 @@ const { colors, borderRadius, spacing, fontSizes } = UI_THEME
 const WHITE = Color4.White()
 
 // Layout — sit just below the top button row.
-const BAR_TOP_DT       = 32
-const BAR_TOP_MB       = 28
+const BAR_TOP_DT       = UI_THEME.topBar.marginTopDesktop
+const BAR_TOP_MB       = UI_THEME.topBar.marginTopMobile
 const BTN_SIZE         = 72
 const GAP_BELOW_BAR_PX = 16
 
@@ -77,7 +76,10 @@ class HelpPanelLayer extends Layer {
 					borderColor   : Color4.create(1, 1, 1, 0.75),
 					flexDirection : 'column',
 					alignItems    : 'stretch',
-					justifyContent: 'flex-start',
+					// Desktop: vertically center content (looks balanced now that
+					// the version chip is gone). Mobile keeps top-anchored layout
+					// because it has custom spacing (title bottom-margin: 40).
+					justifyContent: mobile ? 'flex-start' : 'center',
 				}}
 				uiBackground = {{ color: colors.statsBg }}
 				// Tap-to-close is handled by an absolute-positioned overlay child
@@ -174,35 +176,8 @@ class HelpPanelLayer extends Layer {
 					/>
 				</UiEntity>
 
-				{/* Flex spacer — pushes the version chip to the bottom of the panel. */}
-				<UiEntity uiTransform={{ width: '100%', height: 0, flexGrow: 1 }} />
-
-				{/* Version chip */}
-				<UiEntity
-					uiTransform = {{
-						width         : '100%',
-						height        : 24,
-						flexDirection : 'row',
-						justifyContent: 'center',
-						alignItems    : 'center',
-					}}
-				>
-					<UiEntity
-						uiTransform = {{
-							width       : 'auto',
-							height      : 24,
-							borderRadius: borderRadius.sm,
-							padding     : { right: 4, left: 4 },
-						}}
-						uiText = {{
-							value    : VERSION,
-							fontSize : fontSizes.md,
-							color    : colors.versionFg,
-							textAlign: 'middle-center',
-						}}
-						uiBackground = {{ color: colors.versionBg }}
-					/>
-				</UiEntity>
+				{/* Version chip hidden — kept in source (commented) in case we
+				   want to bring it back for a build-tag readout later. */}
 
 				{/* Full-panel invisible tap-catcher — rendered LAST so it sits on
 				   top in z-order and absorbs every tap that would otherwise be

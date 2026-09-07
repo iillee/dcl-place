@@ -28,6 +28,7 @@ import {
 	getSelectedPaletteIndex,
 	setSelectedPaletteIndex,
 	subscribePlaceState,
+	paintDeniedTickValue,
 } from 'src/client/placeState'
 import { placeAtFeet } from 'src/client/placeInput'
 import { PAINT_COOLDOWN_MS } from 'src/shared/settings'
@@ -57,10 +58,20 @@ const PAINT_BTN_GAP     = 10
 // symmetric inset make the fill read as "inside" the frame.
 const PAINT_BORDER_W    = 4
 const PAINT_BORDER_OFF  = { r: 1, g: 1, b: 1, a: 0.75 } as const
+// Red border shown for PAINT_DENIED_FLASH_MS after a denied tap so the
+// user knows their input registered even though nothing painted.
+const PAINT_BORDER_DENIED = { r: 1, g: 0.2, b: 0.2, a: 1 } as const
+const PAINT_DENIED_FLASH_MS = 280
 const PAINT_FILL_INSET  = 4
-// Paletteindex of white — the F glyph flips to black when this is
-// selected so it stays readable against the fill.
-const WHITE_PALETTE_INDEX = 7
+// Palette indexes of light fills where a white F/click glyph disappears.
+// For these the hint glyph flips to black. Order:
+// 1 blue, 2 red, 3 yellow, 4 green, 5 purple, 6 orange, 7 white, 8 black.
+const WHITE_PALETTE_INDEX  = 7
+const YELLOW_PALETTE_INDEX = 3
+const LIGHT_FILL_INDEXES: ReadonlySet<number> = new Set([
+	WHITE_PALETTE_INDEX,
+	YELLOW_PALETTE_INDEX,
+])
 const KEY_HINT_WHITE      = Color4.create(1, 1, 1, 0.95)
 const KEY_HINT_BLACK      = Color4.create(0, 0, 0, 1)
 // Opaque black used for the white-swatch selection ring (alpha-blended
@@ -88,8 +99,9 @@ const PANEL_HEIGHT    = SWATCH_SIZE + PANEL_PAD * 2
 
 
 type PickerProps = {
-	selected   : number
-	remainingMs: number
+	selected     : number
+	remainingMs  : number
+	deniedUntilMs: number
 }
 
 
@@ -112,15 +124,24 @@ class ColorPickerLayer extends Layer {
 		})
 
 		this.props = new PropsController<PickerProps>({
-			selected   : getSelectedPaletteIndex(),
-			remainingMs: cooldownRemainingMs(),
+			selected     : getSelectedPaletteIndex(),
+			remainingMs  : cooldownRemainingMs(),
+			deniedUntilMs: 0,
 		})
 
 		// Mirror the shared placeState into local props so the layer
-		// rerenders when selection changes from any source.
+		// rerenders when selection changes from any source. Also watches
+		// the paint-denied tick — when it changes we set a short flash
+		// window on the paint button border.
+		let lastDeniedTick = paintDeniedTickValue()
 		subscribePlaceState(() => {
 			if (!this.props) return
 			this.props.set('selected', getSelectedPaletteIndex())
+			const t = paintDeniedTickValue()
+			if (t !== lastDeniedTick) {
+				lastDeniedTick = t
+				this.props.set('deniedUntilMs', Date.now() + PAINT_DENIED_FLASH_MS)
+			}
 		})
 
 		// Cooldown poll — bucketize to 100ms so we don't rerender every
@@ -129,15 +150,25 @@ class ColorPickerLayer extends Layer {
 		// subscribePlaceState notify -> props.set path occasionally fails
 		// to redraw the selection border on tap.
 		let lastBucket = -1
+		let lastFlashActive = false
 		engine.addSystem(() => {
 			if (!this.props) return
 			const sel = getSelectedPaletteIndex()
 			if (sel !== this.props.get('selected')) this.props.set('selected', sel)
 			const remaining = cooldownRemainingMs()
 			const bucket    = Math.ceil(remaining / 100)
-			if (bucket === lastBucket) return
-			lastBucket = bucket
-			this.props.set('remainingMs', remaining)
+			if (bucket !== lastBucket) {
+				lastBucket = bucket
+				this.props.set('remainingMs', remaining)
+			}
+			// Force a rerender exactly once when the denied-flash window
+			// expires so the red border returns to normal.
+			const deniedUntil = this.props.get('deniedUntilMs') as number
+			const flashActive = deniedUntil > 0 && Date.now() < deniedUntil
+			if (lastFlashActive && !flashActive) {
+				this.props.set('deniedUntilMs', 0)
+			}
+			lastFlashActive = flashActive
 		})
 	}
 
@@ -145,8 +176,10 @@ class ColorPickerLayer extends Layer {
 	// MARK: body
 	body() {
 		if (isSplashActive()) return <UiEntity />
-		const selected  = (this.props?.get('selected')    as number) ?? 1
-		const remaining = (this.props?.get('remainingMs') as number) ?? 0
+		const selected     = (this.props?.get('selected')      as number) ?? 1
+		const remaining    = (this.props?.get('remainingMs')   as number) ?? 0
+		const deniedUntil  = (this.props?.get('deniedUntilMs') as number) ?? 0
+		const deniedFlash  = deniedUntil > 0 && Date.now() < deniedUntil
 
 		return (
 			<UiEntity
@@ -175,7 +208,7 @@ class ColorPickerLayer extends Layer {
 					})}
 				</UiEntity>
 
-				{renderPaintButton(remaining, selected)}
+				{renderPaintButton(remaining, selected, deniedFlash)}
 			</UiEntity>
 		)
 	}
@@ -189,7 +222,7 @@ class ColorPickerLayer extends Layer {
 // frame + inner bar split as snowdrift so a border + centred child
 // coexist cleanly. Only the axis is different — theirs fills bottom→
 // top for fuel drain; ours fills left→right for cooldown recharge.
-function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
+function renderPaintButton(remainingMs: number, selectedPaletteIndex: number, deniedFlash: boolean) {
 	const ready         = remainingMs <= 0
 	const progress      = ready ? 1 : 1 - remainingMs / PAINT_COOLDOWN_MS
 	const fillWidthPct  = `${Math.round(progress * 100)}%` as const
@@ -214,7 +247,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 		: { color: fillColor }
 	// Both the white swatch and the eraser (white-backed) need the dark
 	// glyph so the `F` stays readable against the fill.
-	const hintColor     = (selectedPaletteIndex === WHITE_PALETTE_INDEX || isEraser)
+	const hintColor     = (LIGHT_FILL_INDEXES.has(selectedPaletteIndex) || isEraser)
 		? KEY_HINT_BLACK
 		: KEY_HINT_WHITE
 	return (
@@ -226,7 +259,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number) {
 				margin      : { left: PAINT_BTN_GAP },
 				borderRadius: borderRadius.md,
 				borderWidth : PAINT_BORDER_W,
-				borderColor : PAINT_BORDER_OFF,
+				borderColor : deniedFlash ? PAINT_BORDER_DENIED : PAINT_BORDER_OFF,
 			}}
 			uiBackground = {{ color: colors.statsBg }}
 			onMouseDown  = {() => { if (canPlaceNow()) placeAtFeet() }}
@@ -345,6 +378,9 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 	const whiteBacked = paletteIndex === WHITE_PALETTE_INDEX || paletteIndex === PALETTE_NONE
 	const selBorder   = whiteBacked ? SELECT_RING_BLACK : colors.light
 	const ringWidth   = whiteBacked ? SELECTED_BORDER_BLACK : SELECTED_BORDER
+	// E hint flips to black on any light-fill swatch (white, yellow) or
+	// the eraser (white-backed). Matches the paint-button F/click logic.
+	const darkHint    = LIGHT_FILL_INDEXES.has(paletteIndex) || paletteIndex === PALETTE_NONE
 	return (
 		<UiEntity
 			// Include selection state in the key so the swatch REMOUNTS
@@ -392,7 +428,7 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 					uiText = {{
 						value    : '<b>E</b>',
 						fontSize : 22,
-						color    : whiteBacked ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						color    : darkHint ? KEY_HINT_BLACK : KEY_HINT_WHITE,
 						textAlign: 'middle-center',
 					}}
 				/>

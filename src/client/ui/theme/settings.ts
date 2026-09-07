@@ -30,8 +30,6 @@ export const UI_THEME = {
 		countdownBg: alpha(PANEL_BASE, 0.92),
 		bannerBg:    alpha(Color4.Black(), 0.55),
 		statsBg:     alpha(BODY_BASE, 0.85),
-		versionBg:   alpha(BODY_BASE, 0.2),
-		versionFg:   alpha(Color4.White(), 0.3),
 		divider:     alpha(Color4.White(), 0.12),
 	},
 
@@ -60,6 +58,14 @@ export const UI_THEME = {
 		md: 12,
 		lg: 14,
 		xl: 24,
+	},
+
+	/** Top-bar vertical positioning. Shared by the top-bar itself and by
+	 *  the two slide-down panels (help + leaderboard) so they always
+	 *  line up under the bar. Edit here, not in individual layers. */
+	topBar: {
+		marginTopDesktop: 32,
+		marginTopMobile : 28,
 	},
 
 	/** Icon sizes and asset paths — expand as iconography grows. */

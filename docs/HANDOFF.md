@@ -3,8 +3,92 @@
 > Read this first when starting a new session. Full design lives in [DESIGN.md](./DESIGN.md).
 
 **Repo:** https://github.com/iillee/scenes/dcl-place (origin: `iillee/dcl-place`)
-**Branch:** `loadoptimization` (unmerged) — base: `main` @ fabe751
-**This session:** ⚡ **Solid-floor refactor — maze system removed for mobile load performance.**
+**Branch:** `main` (all work merged)
+**This session:** 🧹 **Post-deploy polish sweep — known gaps closed, mobile splash + UX fixes, CI green.**
+
+Cleared every item from the previous session's ⚠️ Known Gaps list plus a
+handful of playtest reports. Highlights:
+
+### Mobile splash reliability
+- **Splash flash mid-load fix.** Added a 2s sticky-settle window in
+  `isApplyingHydration()` so late-arriving CRDT bursts on mobile can't
+  briefly drop the splash between drains and flash the world/HUD.
+  Bumped `HYDRATION_QUIESCENCE_MS` 1500 → 3000 for mobile network jitter.
+- **CRITICAL followup:** the sticky-settle initially fired on live paints
+  too (paints flow through the same `applyQueue`), re-opening the splash
+  for 2s after every pixel placed. Added a `hydrationFullySettled` latch
+  so once the settle window fully drains once, live paints only gate on
+  raw queue length (drains in 1 frame → invisible). Both hydration and
+  live-paint UX now correct.
+- **Progress bar timing fix.** Bar was hitting 100% ~2s before the
+  splash lifted on desktop (fast hydration + `COLD_OPEN_MIN_MS` = 2500
+  hold). Snap-to-100 now also requires `minTimeSatisfied`; eased curve
+  keeps climbing until the splash actually lifts.
+
+### Mobile UX
+- **Zoom cluster horizontal on mobile.** `[+][-]` used to stack vertically
+  (128px tall) and overlapped the native action buttons (`?` help, mute,
+  spectator) on phones with tight safe areas. Now row-flex (60px tall,
+  144px wide with 24px gap), centered under the d-pad at right:140,
+  bottom:340. Desktop unchanged.
+- **Denied-tap feedback.** `placeAtFeet()` was silently no-op'ing when
+  the highlight was hidden (airborne / off-grid) or during cooldown —
+  indistinguishable from a missed tap on mobile. Now plays `playUiClick()`
+  and flashes the paint button border **red (#ff3333) for 280ms** on any
+  denial. New `notePaintDenied()` + `paintDeniedTickValue()` in placeState;
+  `layer.colorPicker` subscribes to the tick and drives the border flash.
+- **Highlight as single source of truth.** Renamed `currentFeetCellId`
+  → `highlightedCellId`. Paint code now paints whatever cell the
+  highlight is showing at tap time — no more independent re-resolution
+  path that could disagree with the visible preview.
+- **Cooldown bar jitter fix.** `applyCooldownAck()` was overwriting
+  `serverSkewMs` on every ack; single high-latency samples on mobile
+  yanked the visible cooldown backward. Now EMA-smoothed with alpha 0.15
+  (first ack seeds directly via `skewSeeded` gate; subsequent blend).
+  A 300ms latency spike now shifts the clock by ~45ms instead of 300ms.
+
+### UI polish
+- **Yellow-swatch F + E hint contrast.** Only white was special-cased to
+  flip glyphs to black. Added a shared `LIGHT_FILL_INDEXES = {white, yellow}`
+  set used by BOTH the paint-button F/click glyph and the swatch E hint.
+  Trivial to extend if another color reads washed out.
+- **Version chip removed from help panel** — wanted a cleaner panel.
+  Deleted `layer.version.tsx`, `src/shared/data/version.ts`, and unused
+  `versionBg`/`versionFg` theme entries.
+- **Help panel vertically centered on desktop** — felt top-heavy after
+  the version chip left. Desktop uses `justifyContent: 'center'`; mobile
+  keeps `flex-start` (has bespoke title spacing).
+- **Music defaults to unmuted** so it plays over the splash. Mute button
+  still works the same.
+- **BAR_TOP_MB/DT extracted** to `UI_THEME.topBar.{marginTopMobile,
+  marginTopDesktop}`. Was duplicated across three layers; now one source
+  of truth for top-bar + slide-down panel alignment.
+
+### Infra
+- **CI workflow updated.** `actions/checkout@v2` → `v4`, `setup-node@v1`
+  → `v4`, Node 24 (broken label) → Node 22 LTS, `npm install` → `npm ci`
+  with npm cache. Green builds instead of failure emails on every push.
+
+### Files touched
+`src/client/paint.ts`, `src/client/placeInput.ts`, `src/client/placeState.ts`,
+`src/client/audio.ts`, `src/client/ui/layers/{loadingSplash,topDownPan,colorPicker,helpPanel,topBar,leaderboard}.tsx`,
+`src/client/ui/theme/settings.ts`, `.github/workflows/ci.yml`.
+Deleted: `src/client/ui/layers/layer.version.tsx`, `src/shared/data/version.ts`.
+
+### Still open
+- Real mobile playtest on the deployed World (this session was
+  desktop-preview + local mobile simulation).
+- Legacy compat shims (`team.ts`, `roundTiming.ts`, `Team.Red/Blue`
+  aliases) still inert but present. Safe cleanup for a rainy day.
+- `initPaintingSystem` no-op still exported. Same — low priority.
+- No graceful-shutdown save hook (up to 30s of pixels lost on server
+  crash between flushes). Deferred.
+
+Previous session log preserved below.
+
+---
+
+**Previous session:** ⚡ **Solid-floor refactor — maze system removed for mobile load performance.**
 Replaced the 400-tile maze GLB grid with a single `assets/models/tile_floor.glb`
 at world origin. Boot fetches went 400 → 1. Deleted `src/client/maze/` and
 `src/shared/maze/` entirely (~1,450 LOC gone), rewrote `paint.ts` around a

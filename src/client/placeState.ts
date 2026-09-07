@@ -18,7 +18,23 @@ const listeners = new Set<Listener>()
 // 0 = eraser (clears the cell), 1..PLACE_PALETTE_SIZE = paint colors.
 let selectedPaletteIndex = 1 // default: first color
 let nextAllowedAtServer  = 0 // ms since epoch, server clock
-let serverSkewMs         = 0 // serverNow - Date.now() at last ack
+
+// Server-clock skew (serverNow - Date.now()). Smoothed with an EMA so a
+// single high-latency ack on mobile doesn't yank the clock and cause
+// the cooldown bar to jump backward mid-fill. Alpha ~0.15 keeps it
+// responsive to real drift (device sleep, clock updates) while filtering
+// per-ack jitter of a few hundred ms.
+//
+// The first ack seeds directly (no prior sample to blend); subsequent
+// acks blend. `skewSeeded` gates the two behaviours.
+let serverSkewMs         = 0
+let skewSeeded           = false
+const SKEW_EMA_ALPHA     = 0.15
+
+// Bumped every time placeAtFeet() (or any paint code path) rejects a
+// user tap. UI subscribers can watch this to flash a "denied" affordance
+// on the paint button. Number is monotonic; only the change matters.
+let paintDeniedTick      = 0
 
 
 // MARK: subscribe
@@ -53,7 +69,13 @@ export function setSelectedPaletteIndex(index: number): void {
 /** Called from the network handler on every cooldownAck. */
 export function applyCooldownAck(nextAllowedAt: number, serverNow: number): void {
 	nextAllowedAtServer = nextAllowedAt
-	serverSkewMs        = serverNow - Date.now()
+	const sample = serverNow - Date.now()
+	if (!skewSeeded) {
+		serverSkewMs = sample
+		skewSeeded   = true
+	} else {
+		serverSkewMs = serverSkewMs + SKEW_EMA_ALPHA * (sample - serverSkewMs)
+	}
 	notify()
 }
 
@@ -82,4 +104,21 @@ export function noteOptimisticSend(estimatedCooldownMs: number): void {
 		nextAllowedAtServer = opt
 		notify()
 	}
+}
+
+
+// MARK: paint-denied signal
+
+/** Called by paint code paths when a user's tap is rejected (cooldown
+ *  active, no valid cell, airborne, etc). UI layers can subscribe via
+ *  subscribePlaceState() and read paintDeniedTick() to flash feedback. */
+export function notePaintDenied(): void {
+	paintDeniedTick++
+	notify()
+}
+
+/** Monotonic counter — subscribers compare against their last-seen
+ *  value to detect a new denial. */
+export function paintDeniedTickValue(): number {
+	return paintDeniedTick
 }

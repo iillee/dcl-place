@@ -208,8 +208,15 @@ const APPLIES_PER_FRAME = 300
 // burst drained (all three gate conditions momentarily false) and then
 // re-open on the next burst — user sees a 1-frame flash of the world +
 // HUD before the splash returns.
+//
+// CRITICAL: the sticky window only applies during initial hydration.
+// Once we've observed a full settle ONCE, we set hydrationFullySettled
+// and thereafter isApplyingHydration reports only on the raw queue.
+// Otherwise every live paint (which also flows through applyQueue) would
+// re-open the splash for 2s — disastrous UX.
 const HYDRATION_SETTLE_MS = 2000
 let lastApplyActivityAtMs = 0
+let hydrationFullySettled = false
 
 function drainApplyQueue(): void {
 	if (applyQueue.length === 0) return
@@ -222,16 +229,25 @@ function drainApplyQueue(): void {
 	lastApplyActivityAtMs = Date.now()
 }
 
-/** True while the CRDT-driven apply queue is still draining OR within
- *  the sticky settle window after the last activity. Used by the
- *  loading splash gate. */
+/** True while the CRDT-driven apply queue is still draining OR (during
+ *  initial hydration only) within the sticky settle window after the
+ *  last activity. Used by the loading splash gate. */
 export function isApplyingHydration(): boolean {
 	if (applyQueue.length > 0) return true
+	// Post-hydration: live paints re-enter this path. Never re-open the
+	// splash for them.
+	if (hydrationFullySettled) return false
 	// Before paintHydrated flips we don't need the settle window — the
 	// splash is already held up by !paintHydrated.
 	if (!paintHydrated) return false
 	if (lastApplyActivityAtMs === 0) return false
-	return Date.now() - lastApplyActivityAtMs < HYDRATION_SETTLE_MS
+	const withinSettle = Date.now() - lastApplyActivityAtMs < HYDRATION_SETTLE_MS
+	if (!withinSettle) {
+		// First time we've observed a full settle post-hydration. Latch
+		// so subsequent live paints can't trigger the sticky window.
+		hydrationFullySettled = true
+	}
+	return withinSettle
 }
 
 function syncCellsFromCrdt(): void {

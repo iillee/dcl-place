@@ -2,7 +2,7 @@
  * audio.ts — background music + UI click sound.
  *
  * Music is parented to the camera so it stays at ear-level anywhere in
- * the 160m scene. Starts muted so the scene loads quietly; the HUD mute
+ * the 160m scene. Starts UNMUTED so music plays over the splash; the HUD mute
  * pill toggles it via toggleMusic().
  *
  * Playback position is tracked across pause/resume so the loop continues
@@ -38,7 +38,7 @@ let clickPool: Entity[] = []
 let claimPool: Entity[] = []
 let clickIdx = 0
 let claimIdx = 0
-let musicMuted = true
+let musicMuted = false
 let playStartMs = 0
 let pausedPositionSec = 0
 
