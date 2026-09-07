@@ -21,6 +21,7 @@
 
 import { EnvVar } from '@dcl/sdk/server'
 
+import { FALLBACK_DISCORD_SNAPSHOT_WEBHOOK } from 'src/server/webhookSecrets'
 import { parseCellId } from 'src/shared/paintGrid'
 import {
 	MAZE_GRID_WIDTH,
@@ -70,16 +71,21 @@ const lastManualByUser = new Map<string, number>()
 // MARK: initSnapshotDiscord
 
 export async function initSnapshotDiscord(): Promise<void> {
+	let fromEnv = ''
 	try {
-		webhookUrl = (await EnvVar.get('DISCORD_SNAPSHOT_WEBHOOK')) || ''
+		fromEnv = (await EnvVar.get('DISCORD_SNAPSHOT_WEBHOOK')) || ''
 	} catch (err) {
-		webhookUrl = ''
-		console.log(`[Snapshot] EnvVar.get failed (${err}) — snapshot posting disabled`)
+		console.log(`[Snapshot] EnvVar.get failed (${err}) — will try fallback`)
 	}
-	if (webhookUrl) {
-		console.log('[Snapshot] webhook loaded from env — auto-post every 5 min if dirty')
+	if (fromEnv) {
+		webhookUrl = fromEnv
+		console.log('[Snapshot] webhook loaded from EnvVar — auto-post every 5 min if dirty')
+	} else if (FALLBACK_DISCORD_SNAPSHOT_WEBHOOK) {
+		webhookUrl = FALLBACK_DISCORD_SNAPSHOT_WEBHOOK
+		console.log('[Snapshot] webhook loaded from webhookSecrets.ts fallback (Genesis path) — auto-post every 5 min if dirty')
 	} else {
-		console.log('[Snapshot] no DISCORD_SNAPSHOT_WEBHOOK set — snapshot posting disabled')
+		webhookUrl = ''
+		console.log('[Snapshot] no webhook available (EnvVar unset, fallback empty) — snapshot posting disabled')
 	}
 }
 
