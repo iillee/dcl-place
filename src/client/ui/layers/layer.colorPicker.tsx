@@ -378,6 +378,9 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 	const whiteBacked = paletteIndex === WHITE_PALETTE_INDEX || paletteIndex === PALETTE_NONE
 	const selBorder   = whiteBacked ? SELECT_RING_BLACK : colors.light
 	const ringWidth   = whiteBacked ? SELECTED_BORDER_BLACK : SELECTED_BORDER
+	// E hint flips to black on any light-fill swatch (white, yellow) or
+	// the eraser (white-backed). Matches the paint-button F/click logic.
+	const darkHint    = LIGHT_FILL_INDEXES.has(paletteIndex) || paletteIndex === PALETTE_NONE
 	return (
 		<UiEntity
 			// Include selection state in the key so the swatch REMOUNTS
@@ -425,7 +428,7 @@ function renderSwatch(color: Color4, paletteIndex: number, isSelected: boolean, 
 					uiText = {{
 						value    : '<b>E</b>',
 						fontSize : 22,
-						color    : whiteBacked ? KEY_HINT_BLACK : KEY_HINT_WHITE,
+						color    : darkHint ? KEY_HINT_BLACK : KEY_HINT_WHITE,
 						textAlign: 'middle-center',
 					}}
 				/>
