@@ -56,8 +56,10 @@ fall — the whole social drama of r/place, native to a 3D social world.
 
 The scene is a single `assets/models/tile_floor.glb` at world origin —
 one draw call for the entire canvas floor. Paint cells are individual
-plane entities lazily spawned only when a pixel is actually painted;
-unpainted cells cost zero entities. See §5 for the reasoning.
+plane entities spawned in **two sequential phases** at boot: painted
+cells first (from CRDT hydration), then grey unpainted cells to fill
+out the grid. Both phases share a strict 300 addEntity/frame ceiling.
+See §5 for the reasoning.
 
 ---
 
@@ -219,12 +221,31 @@ src/
 
 ### Paint hot path
 
-Cell entities are created **lazily** — only for painted pixels. The
-floor GLB shows through as the baseline for unpainted cells. Every CRDT
-diff pushes changed bytes to an `applyQueue`; a per-frame drain system
-applies at most 300 per frame, so any burst (hydration or paint-storm)
-is capped at that rate regardless of payload size. Live paints drain in
-one frame → instant.
+Cell entities are spawned in **two sequential phases** at boot, with a
+strict 300 addEntity/frame ceiling throughout. Mobile's entity allocator
+drops cells (blank-canvas regression) if sustained allocation exceeds
+this rate while CRDT replay is in flight.
+
+**Phase 1 — CRDT hydration:**
+Every diff pushes changed bytes to `applyQueue`; `drainApplyQueue`
+drains at 300/frame. Each drain lazy-spawns a coloured cell entity via
+`applyPaintIndex`. During this phase, unpainted areas show the floor
+GLB.
+
+**Phase 2 — grey-fill:**
+`spawnQueue` (populated at boot with every interior cell id) is GATED
+off until `paintHydrated && applyQueue.length === 0`. Once hydration
+is quiescent, `drainSpawnQueue` starts spawning any cell that still
+has no entity at `PALETTE_NONE` (light grey), also at 300/frame.
+
+**Live paints (post-hydration):**
+A new paint enqueues one item to `applyQueue`, drained next frame. If
+the target cell already has an entity (grey-fill done, or hydrated),
+`applyPaintIndex` just recolours; otherwise it lazy-spawns.
+
+Splash gate holds through both phases via
+`isSpawningCanvas() || isApplyingHydration() || !paintHydrated`. Peak
+allocation is bounded to 300/frame at all times.
 
 ---
 
@@ -274,15 +295,21 @@ scene.
    server's `internColor()` dedupes by exact color. If unpainted equals
    palette-white, both alias index 0 and clients render white as grey
    (or worse, black).
-4. **Sparse CRDT + lazy cell entities.** Unpainted cells cost zero
-   entities. Never spawn all cells eagerly — 25k+ addEntity calls in
-   one frame kills mobile.
+4. **300 addEntity/frame ceiling.** Mobile's entity allocator drops
+   cells (blank-canvas regression) above ~300 allocations/frame under
+   sustained load with CRDT replay in flight. Cell-spawn and CRDT-apply
+   paths BOTH respect this and are gated to run sequentially (grey-fill
+   waits until CRDT applyQueue is empty), so combined peak stays at
+   300/frame. Never let two allocation sources overlap.
 5. **Fresh `MaterialInfo` per `setPbrMaterial` call.** Do NOT cache and
    share the object. Mobile silently blanks the canvas if you do —
    the SDK/renderer references or mutates it internally.
-6. **`applyQueue` cap = 300/frame.** Hydration bursts arrive as
-   100 tiles × up to 256 changed bytes each. Applying inline stalls
-   mobile; the drain queue keeps per-frame allocation bounded.
+6. **`applyQueue` cap = 300/frame + drainSpawnQueue gate.** Hydration
+   bursts arrive as 100 tiles × up to 256 changed bytes each. Applying
+   inline stalls mobile; the drain queue keeps per-frame allocation
+   bounded. The grey-fill spawnQueue drain checks
+   `paintHydrated && applyQueue.length === 0` before spawning anything
+   — do not remove this gate.
 7. **Splash sticky-settle uses a `hydrationFullySettled` latch.** The
    settle window only applies during initial hydration. After it
    drains once, live paints only gate on raw queue length — otherwise
