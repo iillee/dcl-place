@@ -45,6 +45,7 @@ import {
 	getSelectedPaletteIndex,
 	setSelectedPaletteIndex,
 	noteOptimisticSend,
+	notePaintDenied,
 } from 'src/client/placeState'
 import { playUiClick } from 'src/client/audio'
 
@@ -73,9 +74,12 @@ const TILE_PLANE_DROP = WALKABLE_TOP_M - FLAT_OFFSET_M
 // dcl-canvas GROUND_TOLERANCE.
 const GROUND_TOLERANCE = 0.4
 
-/** Latest resolved feet-cell — refreshed every frame by the feet system.
- *  `placeAtFeet()` reads this when the player taps PAINT. */
-let currentFeetCellId: string | null = null
+/** Latest cellId being previewed by the highlight cube. Set by the feet
+ *  system on every frame the highlight is VISIBLE, cleared by
+ *  `hideHighlight()`. `placeAtFeet()` treats this as the single source
+ *  of truth — whatever the highlight shows IS what gets painted — so
+ *  the tap target the user sees always matches the pixel they place. */
+let highlightedCellId: string | null = null
 
 // -------- Pop-up animation state --------
 // When the player enters a new cell (or re-enters after being airborne /
@@ -205,7 +209,7 @@ function positionHighlight(x: number, y: number, z: number, index: number, heigh
 
 
 function hideHighlight(): void {
-	currentFeetCellId = null
+	highlightedCellId = null
 	// Reset pop state so the NEXT cell we land on triggers a fresh
 	// grow-from-ground animation instead of appearing full-size.
 	popCellId  = null
@@ -250,7 +254,7 @@ export function initFeetPaint(): void {
 		// feet aren't near the walkable surface (jumping / gliding).
 		if (p.y - cell.groundY > GROUND_TOLERANCE) { hideHighlight(); return }
 
-		currentFeetCellId = cell.id
+		highlightedCellId = cell.id
 		const { cx, cz } = snapCellCenter(p.x, p.z)
 		const yBottom = cell.groundY - TILE_PLANE_DROP
 		const hs      = popProgress(cell.id)
@@ -271,16 +275,25 @@ export function initFeetPaint(): void {
 export function placeAtFeet(): void {
 	if (!canPlaceNow()) {
 		console.log('[Place] tap ignored — cooldown active')
+		playUiClick()
+		notePaintDenied()
 		return
 	}
-	if (!currentFeetCellId) {
-		console.log('[Place] tap ignored — no valid cell under feet')
+	// Highlight IS the source of truth: if it's visible we paint whatever
+	// cell it's showing. If it's hidden (airborne / off-grid), reject and
+	// give the player audible + visual feedback so the tap isn't silently
+	// swallowed.
+	const target = highlightedCellId
+	if (!target) {
+		console.log('[Place] tap ignored — no highlighted cell (airborne / off-grid)')
+		playUiClick()
+		notePaintDenied()
 		return
 	}
 	const paletteIndex = getSelectedPaletteIndex()
-	console.log(`[Place] → placePixel ${currentFeetCellId} color=${paletteIndex}`)
+	console.log(`[Place] → placePixel ${target} color=${paletteIndex}`)
 	noteOptimisticSend(PAINT_COOLDOWN_MS)
-	room.send('placePixel', { cellId: currentFeetCellId, paletteIndex })
+	room.send('placePixel', { cellId: target, paletteIndex })
 }
 
 
