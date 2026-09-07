@@ -10,6 +10,10 @@ A mobile-first Decentraland re-imagining of Reddit's r/place: a single giant wal
 
 ![dcl/place](assets/images/dclplace.png)
 
+![Canvas timelapse](docs/timelapse.gif)
+
+> The canvas evolving over its lifetime. Frames auto-posted by the server to a Discord channel every 5 minutes; the GIF above is stitched from that archive.
+
 ---
 
 ## The pitch
