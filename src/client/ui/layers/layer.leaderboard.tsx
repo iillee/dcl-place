@@ -42,8 +42,8 @@ const PANEL_H    = HEADER_H + MAX_ROWS * ROW_H + V_PAD * 2 + 8
 
 // Match the top-bar offset so the panel tucks nicely under it — same
 // numbers as layer.helpPanel so both slide in from the same place.
-const BAR_TOP_DT = 32
-const BAR_TOP_MB = 28
+const BAR_TOP_DT = UI_THEME.topBar.marginTopDesktop
+const BAR_TOP_MB = UI_THEME.topBar.marginTopMobile
 const BTN_SIZE   = 72
 const GAP_BELOW  = 16
 

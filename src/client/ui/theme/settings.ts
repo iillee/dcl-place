@@ -60,6 +60,14 @@ export const UI_THEME = {
 		xl: 24,
 	},
 
+	/** Top-bar vertical positioning. Shared by the top-bar itself and by
+	 *  the two slide-down panels (help + leaderboard) so they always
+	 *  line up under the bar. Edit here, not in individual layers. */
+	topBar: {
+		marginTopDesktop: 32,
+		marginTopMobile : 28,
+	},
+
 	/** Icon sizes and asset paths — expand as iconography grows. */
 	icons: {
 		size: {

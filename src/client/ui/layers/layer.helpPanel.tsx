@@ -26,8 +26,8 @@ const { colors, borderRadius, spacing, fontSizes } = UI_THEME
 const WHITE = Color4.White()
 
 // Layout — sit just below the top button row.
-const BAR_TOP_DT       = 32
-const BAR_TOP_MB       = 28
+const BAR_TOP_DT       = UI_THEME.topBar.marginTopDesktop
+const BAR_TOP_MB       = UI_THEME.topBar.marginTopMobile
 const BTN_SIZE         = 72
 const GAP_BELOW_BAR_PX = 16
 
