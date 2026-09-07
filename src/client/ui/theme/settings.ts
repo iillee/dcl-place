@@ -30,8 +30,6 @@ export const UI_THEME = {
 		countdownBg: alpha(PANEL_BASE, 0.92),
 		bannerBg:    alpha(Color4.Black(), 0.55),
 		statsBg:     alpha(BODY_BASE, 0.85),
-		versionBg:   alpha(BODY_BASE, 0.2),
-		versionFg:   alpha(Color4.White(), 0.3),
 		divider:     alpha(Color4.White(), 0.12),
 	},
 

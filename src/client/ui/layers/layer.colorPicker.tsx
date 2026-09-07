@@ -63,9 +63,15 @@ const PAINT_BORDER_OFF  = { r: 1, g: 1, b: 1, a: 0.75 } as const
 const PAINT_BORDER_DENIED = { r: 1, g: 0.2, b: 0.2, a: 1 } as const
 const PAINT_DENIED_FLASH_MS = 280
 const PAINT_FILL_INSET  = 4
-// Paletteindex of white — the F glyph flips to black when this is
-// selected so it stays readable against the fill.
-const WHITE_PALETTE_INDEX = 7
+// Palette indexes of light fills where a white F/click glyph disappears.
+// For these the hint glyph flips to black. Order:
+// 1 blue, 2 red, 3 yellow, 4 green, 5 purple, 6 orange, 7 white, 8 black.
+const WHITE_PALETTE_INDEX  = 7
+const YELLOW_PALETTE_INDEX = 3
+const LIGHT_FILL_INDEXES: ReadonlySet<number> = new Set([
+	WHITE_PALETTE_INDEX,
+	YELLOW_PALETTE_INDEX,
+])
 const KEY_HINT_WHITE      = Color4.create(1, 1, 1, 0.95)
 const KEY_HINT_BLACK      = Color4.create(0, 0, 0, 1)
 // Opaque black used for the white-swatch selection ring (alpha-blended
@@ -241,7 +247,7 @@ function renderPaintButton(remainingMs: number, selectedPaletteIndex: number, de
 		: { color: fillColor }
 	// Both the white swatch and the eraser (white-backed) need the dark
 	// glyph so the `F` stays readable against the fill.
-	const hintColor     = (selectedPaletteIndex === WHITE_PALETTE_INDEX || isEraser)
+	const hintColor     = (LIGHT_FILL_INDEXES.has(selectedPaletteIndex) || isEraser)
 		? KEY_HINT_BLACK
 		: KEY_HINT_WHITE
 	return (

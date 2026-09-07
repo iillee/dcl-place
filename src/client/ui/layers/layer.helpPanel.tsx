@@ -18,7 +18,6 @@ import { isSplashActive } from 'src/client/ui/layers/layer.loadingSplash'
 
 import { playUiClick } from 'src/client/audio'
 import { UI_THEME } from 'src/client/ui/theme/settings'
-import { VERSION }  from 'src/shared/data/version'
 // Cycle-safe: only accessed inside toggleHelpPanel(), never at module load.
 import { leaderboardLayer } from 'src/client/ui/layers/layer.leaderboard'
 
@@ -174,35 +173,8 @@ class HelpPanelLayer extends Layer {
 					/>
 				</UiEntity>
 
-				{/* Flex spacer — pushes the version chip to the bottom of the panel. */}
-				<UiEntity uiTransform={{ width: '100%', height: 0, flexGrow: 1 }} />
-
-				{/* Version chip */}
-				<UiEntity
-					uiTransform = {{
-						width         : '100%',
-						height        : 24,
-						flexDirection : 'row',
-						justifyContent: 'center',
-						alignItems    : 'center',
-					}}
-				>
-					<UiEntity
-						uiTransform = {{
-							width       : 'auto',
-							height      : 24,
-							borderRadius: borderRadius.sm,
-							padding     : { right: 4, left: 4 },
-						}}
-						uiText = {{
-							value    : VERSION,
-							fontSize : fontSizes.md,
-							color    : colors.versionFg,
-							textAlign: 'middle-center',
-						}}
-						uiBackground = {{ color: colors.versionBg }}
-					/>
-				</UiEntity>
+				{/* Version chip hidden — kept in source (commented) in case we
+				   want to bring it back for a build-tag readout later. */}
 
 				{/* Full-panel invisible tap-catcher — rendered LAST so it sits on
 				   top in z-order and absorbs every tap that would otherwise be
