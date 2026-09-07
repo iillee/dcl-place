@@ -540,8 +540,27 @@ export function paintedCount(): number {
 	return 0
 }
 
+/** Count of paintable cells after the perimeter trim (see `cellOnFloor`).
+ *  Computed once at module load; the trim rule is static. Displayed in the
+ *  leaderboard as the denominator of "X / Y pixels painted". Was previously
+ *  the naive full-grid count (W×H×cellsPerTile), which over-counted the
+ *  outer-arm cells that don't exist on the floor GLB. */
+const PAINTABLE_CELL_COUNT: number = (() => {
+	let n = 0
+	for (let tx = 0; tx < MAZE_GRID_WIDTH; tx++) {
+		for (let tz = 0; tz < MAZE_GRID_HEIGHT; tz++) {
+			for (let row = 0; row < SIZE; row++) {
+				for (let col = 0; col < SIZE; col++) {
+					if (cellOnFloor(tx, tz, col, row)) n++
+				}
+			}
+		}
+	}
+	return n
+})()
+
 export function totalCellCount(): number {
-	return MAZE_GRID_WIDTH * MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE
+	return PAINTABLE_CELL_COUNT
 }
 
 
