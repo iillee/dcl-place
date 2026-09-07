@@ -37,13 +37,10 @@ import {
 	tileNetworkId,
 } from 'src/shared/paintGrid'
 import {
-	TEAM_COLORS,
+	UNPAINTED_COLOR,
 	PALETTE_NONE,
-	PALETTE_RED,
-	PALETTE_BLUE,
 	MAX_PALETTE_INDEX,
 } from 'src/shared/palette'
-import { Team } from 'src/shared/team'
 
 export const PREBOUND_PALETTE_SLOTS = 8
 
@@ -255,9 +252,7 @@ export function initPaintSync(): void {
 	trySync(paintCoverageEntity, [PaintCoverage.componentId], COVERAGE_NETWORK_ID)
 
 	const seedColors: Array<{ index: number; color: Color4 }> = [
-		{ index: PALETTE_NONE, color: TEAM_COLORS[Team.None] },
-		{ index: PALETTE_RED,  color: TEAM_COLORS[Team.Red] },
-		{ index: PALETTE_BLUE, color: TEAM_COLORS[Team.Blue] },
+		{ index: PALETTE_NONE, color: UNPAINTED_COLOR },
 	]
 
 	const slots = Math.min(PREBOUND_PALETTE_SLOTS, MAX_PALETTE_INDEX + 1)

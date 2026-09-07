@@ -1,17 +1,14 @@
 /**
- * player.ts — player-avatar side effects driven by game events.
+ * player.ts — player-avatar side effects.
  *
- * Currently owns just the round-boundary respawn: teleport every player
- * to the scene's center pad when the round resets. Requires the
- * ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE permission (declared in scene.json).
- *
- * Future homes here: locomotion tweaks (squid-swim on own paint),
- * respawn-on-death (Phase 6), team-color indicator attachments, etc.
+ * Currently owns just the initial spawn: teleport every player to the
+ * scene's center pad ~2s after boot so they land on solid ground
+ * regardless of where scene.json's spawn range dropped them. Requires
+ * the ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE permission (declared in scene.json).
  */
 
 import { engine } from '@dcl/sdk/ecs'
 import { movePlayerTo } from '~system/RestrictedActions'
-import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
 
 // Scene is 20 parcels x 20 parcels (320m x 320m). Spawn at the geometric
 // centre. If the scene footprint changes, update these coordinates too or
@@ -30,12 +27,8 @@ function teleportHome(): void {
 }
 
 export function initPlayerNet(): void {
-  // Round boundary: everyone snaps back to the cross for a clean start.
-  eventBus.on(ClientEvents.RoundReset, teleportHome)
-  // Initial spawn-in: give the maze ~2s to grow in, then plant the player
-  // on the center cross. Without this, players land wherever scene.json's
-  // spawn range dropped them, which may or may not be on solid ground
-  // depending on maze layout.
+  // Initial spawn-in: give the canvas ~2s to load, then plant the player
+  // on the centre.
   let elapsed = 0
   let done = false
   const INIT_DELAY = 2

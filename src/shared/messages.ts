@@ -1,63 +1,24 @@
 /**
- * messages.ts — shared WS message schema for Squareoff auth server.
+ * messages.ts — shared WS message schema for dcl/place auth server.
  *
- * Registered from both client and server (identical schema). Follows the
- * flagtag pattern of a single `room` handle returned by registerMessages().
+ * Registered from both client and server (identical schema). Returns a
+ * single `room` handle via registerMessages().
  *
- * Message set: joinRoster/teamAssigned, paintTick (command only),
- * roundReset, updateName, requestLeaderboard.
+ * Message set: joinRoster, placePixel/cooldownAck, updateName,
+ * requestLeaderboard, requestSnapshotPost, debugStorm.
  *
  * Paint *state* (cell indexes + palette + coverage) syncs exclusively via
- * CRDT components — not paintDelta/snapshot room messages.
- *
- * SATURATION DISCIPLINE (write ONCE, enforce forever):
- *   - Client paintTick: PAINT_TICK_HZ (settings) — well under per-peer inbound cap
- *   - Paint state: one sparse PaintCell CRDT component per painted cell
- * See assets/docs/PHASE_4_PLAN.md for historical WS-delta reasoning; paint
- * state has since moved to granular CRDT components.
+ * CRDT components (PaintTile / PaletteEntry / PaintCoverage) — not via
+ * room messages.
  */
 
 import { Schemas } from '@dcl/sdk/ecs'
 import { registerMessages } from '@dcl/sdk/network'
 
 export const Messages = {
-	// Client → Server
-	// Sent once on client boot after PlayerIdentityData is populated.
-	// Server appends to roster if new, replies with teamAssigned to the sender.
+	// Client → Server: sent once on client boot after PlayerIdentityData
+	// is populated. Server logs the join and triggers a Discord notification.
 	joinRoster: Schemas.Map({ userId: Schemas.String }),
-
-	// Server → Client
-	// team values match the Team enum in src/shared/team.ts: 1 = Red, 2 = Blue.
-	// Assignment is `roster.indexOf(userId) % 2` — stable across rejoin,
-	// and guaranteed to alternate (fixes the "two blue players in a row"
-	// issue the Phase 3 client hash could produce).
-	teamAssigned: Schemas.Map({ team: Schemas.Int }),
-
-	// Client → Server: cells painted by the sender since the last flush.
-	// Sent at PAINT_TICK_HZ. Server looks up sender's team from roster,
-	// interns the team Color4 into the palette, and writes the palette
-	// index into a per-cell PaintCell CRDT component. Not a state-sync channel.
-	// WHY ids and not positions: server doesn't have the maze generator (it's
-	// client-only for now), so it can't resolve position -> cell. Client
-	// authors ids via worldToCellId locally; server trusts them for Phase 4.
-	// Anti-cheat (position validation) is deferred to Phase 5 per the plan.
-	// Rate limit: server caps ids per message from PAINT_BRUSH_SIZE_CELLS
-	// (+ headroom); anything larger is dropped as suspicious.
-	paintTick: Schemas.Map({ ids: Schemas.Array(Schemas.String) }),
-
-	// Server → Client (broadcast): UTC round boundary crossed. Carries the
-	// authoritative final score of the just-ended round (all clients show
-	// the same banner — no more "one player sees red won, another sees
-	// tie") plus the seed for the new round. Server has already cleared its
-	// paint CRDT chunks before/with this message.
-	// finalTotal is server-side painted-cell count; client re-derives the
-	// banner denominator from its own walkable-cell count (same math as HUD).
-	roundReset: Schemas.Map({
-		seed:       Schemas.Int,
-		finalRed:   Schemas.Int,
-		finalBlue:  Schemas.Int,
-		finalTotal: Schemas.Int,
-	}),
 
 	// Client → Server: send this player's display name once on join so
 	// the leaderboard shows human-readable names instead of wallet hashes.
@@ -65,22 +26,14 @@ export const Messages = {
 	// leaderboard entries in place.
 	updateName: Schemas.Map({ name: Schemas.String }),
 
-	// Client → Server: request a team change. Server updates its roster
-	// override map for this userId, then replies teamAssigned to the sender
-	// with the new team so the client re-syncs localTeam. Future paintTick
-	// messages will be attributed to the new team.
-	switchTeam: Schemas.Map({ team: Schemas.Int }),
-
 	// Client → Server: request an immediate fresh copy of the leaderboard.
 	// Fires when the player opens the popup mid-round so they see current
-	// standings without waiting for the next round boundary broadcast.
+	// standings without waiting for the next periodic broadcast.
 	requestLeaderboard: Schemas.Map({}),
 
-	// -------- dcl/place --------
-
 	// Client → Server: place a single pixel.
-	//   cellId       — same format as paintTick ids (`tx,tz,ty:col,row`)
-	//   paletteIndex — 1..16 (see shared/palette.ts PLACE_PALETTE)
+	//   cellId       — `tx,tz,ty:col,row` (see shared/paintGrid.ts)
+	//   paletteIndex — 1..PLACE_PALETTE_SIZE (see shared/palette.ts)
 	// Server enforces PAINT_COOLDOWN_MS between accepted pixels per sender.
 	placePixel: Schemas.Map({
 		cellId:       Schemas.String,
@@ -103,12 +56,11 @@ export const Messages = {
 	requestSnapshotPost: Schemas.Map({}),
 
 	// Client → Server: paint-storm debug trigger. Server ignores unless the
-	// DCL_PLACE_ALLOW_STORM EnvVar is set to "1" — production stays safe. When
-	// enabled, server paints `target` random-color pixels across the canvas,
-	// throttled to STORM_CELLS_PER_TICK per engine tick so the flush loop
-	// stays responsive. mode="fill" paints only currently-unpainted cells;
-	// mode="random" may overwrite existing pixels. mode="clear" wipes the
-	// entire canvas (also gated on the EnvVar). Ignores cooldowns.
+	// DCL_PLACE_ALLOW_STORM EnvVar is set to "1" — production stays safe.
+	// When enabled, server paints `target` random-color pixels across the
+	// canvas, throttled to STORM_CELLS_PER_TICK per engine tick. mode="fill"
+	// paints only currently-unpainted cells; mode="random" may overwrite
+	// existing pixels; mode="clear" wipes the entire canvas.
 	debugStorm: Schemas.Map({
 		target: Schemas.Int,
 		mode:   Schemas.String,

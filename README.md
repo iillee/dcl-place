@@ -51,7 +51,7 @@ The four native on-screen buttons are repurposed: eye = spectator, `E` = mute, `
 |---|---|
 | **World** | `dclplace.dcl.eth` |
 | **Parcels** | 20 × 20 = 400 (320m × 320m) |
-| **Canvas** | 320 × 320 = **102,400 pixels**, 1m per pixel |
+| **Canvas** | 20 × 20 tiles × 16² cells/tile, ~**25,444 paintable pixels** at 1 m each (perimeter trimmed to fit the floor GLB) |
 | **Palette** | 8 colors (blue, red, yellow, green, purple, orange, white, black) |
 | **Cooldown** | 1 second per wallet (server-enforced) |
 | **SDK** | `@dcl/sdk@auth-server` (authoritative Multiplayer Server) |
@@ -66,40 +66,45 @@ Single codebase, branched at the entry point via the **async** `isServer()` from
 src/
 ├── index.ts              # async isServer() branch
 ├── shared/               # loaded by BOTH sides
-│   ├── messages.ts       # placePixel, cooldownAck, joinRoster, updateName, requestLeaderboard
-│   ├── components.ts     # PaintCell, PaletteEntry, PaintCoverage, LeaderboardState
-│   ├── palette.ts        # 8-color PLACE_PALETTE (+ unpainted grey #EAEAEA — see invariant below)
+│   ├── messages.ts       # placePixel, cooldownAck, joinRoster, updateName, requestLeaderboard, ...
+│   ├── components.ts     # PaintTile, PaletteEntry, PaintCoverage, LeaderboardState
+│   ├── palette.ts        # 8-color PLACE_PALETTE + UNPAINTED_COLOR (#EAEAEA — see invariant below)
 │   ├── settings.ts       # PAINT_COOLDOWN_MS, scene geometry, tuning knobs
-│   ├── paintGrid.ts      # cellId ↔ world-coord math (uint32 packing)
-│   ├── paintSync.ts      # syncEntity wiring (server-only writes)
-│   └── maze/             # tile-grid generator (verbatim from dcl-canvas)
+│   ├── paintGrid.ts      # cellId ↔ tile/cell key math (uint32 packing)
+│   └── paintSync.ts      # syncEntity wiring (server-only writes)
 ├── server/               # isServer() === true
 │   ├── server.ts         # message handlers + 30s canvas flush + 1s leaderboard tick + snapshot auto-post
 │   ├── paintState.ts     # authoritative cell map + palette interning
 │   ├── canvasStorage.ts  # Storage.get/set for the eternal canvas (single blob, dirty-flushed)
 │   ├── leaderboard.ts    # top-100 all-time paint counts, dirty-tick published
 │   ├── snapshotDiscord.ts# server-side PNG encoder + Discord webhook multipart upload
-│   └── discord.ts        # optional join notifications
+│   ├── discord.ts        # optional player-join notifications
+│   ├── serverStats.ts    # heartbeat + component-change metrics
+│   └── debugStorm.ts     # paint-storm stress harness (env-gated, off in prod)
 └── client/               # isServer() === false
-    ├── index.ts          # boot orchestrator
+    ├── index.ts          # boot orchestrator + hotkey wiring
     ├── clientHandler.ts  # network boundary (room.on / room.send)
     ├── placeInput.ts     # feet-tracker + highlight cube + F hotkey
-    ├── paint.ts          # cell renderer + CRDT observer
-    ├── placeState.ts     # selected color + cooldown observable
+    ├── paint.ts          # lazy cell spawn + CRDT observer + hydration drain
+    ├── placeState.ts     # selected color + cooldown observable + denied signal
     ├── topDownCamera.ts  # spectator VirtualCamera + pan/zoom
     ├── touchControls.ts  # mobile on-screen button remapping (SDK 7.26+)
     ├── audio.ts          # music + SFX
-    ├── maze/rebuild.ts   # tile-grid spawn cascade
+    ├── player.ts         # initial spawn teleport
     └── ui/               # React-ECS HUD via DUCK (@stom66/dcl-ui-component-kit)
         └── layers/
             ├── layer.colorPicker      # swatches + inline paint button (fuel-fill pattern)
             ├── layer.leaderboard      # slide-down top-10 panel
             ├── layer.topBar           # spectator · mute · ★ · ?
             ├── layer.helpPanel        # slide-down 3-line rules
-            ├── layer.topDownPan       # spectator drag catcher
-            ├── layer.loadingSplash    # cold-open splash
-            └── layer.version          # build-version chip
+            ├── layer.topDownPan       # spectator drag catcher + zoom cluster
+            └── layer.loadingSplash    # cold-open splash + hydration gate
 ```
+
+The entire canvas floor is a single `assets/models/tile_floor.glb` at
+world origin — one draw call. Paint cells are individual plane entities
+spawned **lazily**, only when a pixel is actually painted. Unpainted
+cells cost zero entities.
 
 ### Key contracts
 
@@ -112,8 +117,8 @@ src/
 - `cooldownAck { accepted, nextAllowedAt, serverNow }` — clients store `serverSkewMs = serverNow − Date.now()` so cooldowns are always server-clock-truthful.
 
 **Sync (CRDT, server-owned writes):**
-- `PaintCell.index` — 1 byte per painted cell (sparse)
-- `PaletteEntry.color` — 8 slots interned at boot into fixed indexes 1..8
+- `PaintTile.cells` — 256-byte array per tile (one palette-index byte per cell); dirty tiles flush once per server tick
+- `PaletteEntry.color` — 9 slots (index 0 = unpainted grey, 1..8 = palette)
 - `PaintCoverage`, `LeaderboardState.json`
 
 ### Design decisions worth remembering
@@ -121,11 +126,11 @@ src/
 - **Permanence is the pitch.** No round resets. Ever.
 - **Server owns the clock.** Client never trusts `Date.now()` for cooldown.
 - **Sparse CRDT.** Only painted cells cost anything — an untouched canvas is free.
-- **Palette invariant:** the "unpainted" color (`#EAEAEA`) must never equal any palette color. Server's `internColor()` dedupes by exact color, so if unpainted collided with palette-white, both would alias index 0 and clients would render white as grey (or worse).
+- **Palette invariant:** `UNPAINTED_COLOR` (`#EAEAEA`) must never equal any palette color. Server's `internColor()` dedupes by exact color, so if unpainted collided with palette-white, both would alias index 0 and clients would render white as grey (or worse).
 - **Feet, not cursor.** Placement follows the avatar, and jumping/gliding hides the preview — no sky-painting.
 - **Paint button IS the cooldown.** One visual signals three things: current color, cooldown progress, and tap target.
 - **Leaderboard publishes on a throttle, not per-paint.** Constant broadcast cost (~150 KB/s at 100 clients) regardless of activity — never publish on every `incrementPaint`.
-- **Canvas persistence is a single blob**, flushed every 30s. Fine below ~100k cells; chunked storage is a Day-8 upgrade that isn't blocking.
+- **Canvas persistence is a single blob**, flushed every 30s. Fine at the current scale; chunked storage is a future upgrade if we push per-tile resolution higher.
 
 ### Discord snapshot pipeline
 

@@ -11,7 +11,7 @@
  * playing:false → true transition, so we must seek BEFORE flipping playing.
  *
  * Future SFX (paint hits, round-end fanfare) will register subscribers on
- * `eventBus` / `ClientEvents` from this module — keeping all audio config in one place.
+ * Callers wire mute toggling / SFX triggers directly — no event bus.
  */
 
 import { AudioSource, Entity, InputAction, PointerEventType, Transform, engine, inputSystem } from '@dcl/sdk/ecs'

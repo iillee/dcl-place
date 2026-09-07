@@ -1,23 +1,19 @@
 /**
  * clientHandler.ts — client network boundary for dcl/place.
  *
- * Inbound room messages → eventBus / placeState.
+ * Inbound room messages → placeState.
  * Outbound: joinRoster + updateName (on state-sync). placePixel is sent
  * on-demand from client/placeInput.ts.
  *
- * Paint *state* is CRDT only (PaintCell / PaletteEntry / PaintCoverage).
+ * Paint state is CRDT only (PaintTile / PaletteEntry / PaintCoverage).
  */
 
 import { engine, PlayerIdentityData, AvatarBase } from '@dcl/sdk/ecs'
 import { isStateSyncronized } from '@dcl/sdk/network'
 
 import { room } from 'src/shared/messages'
-import { Team } from 'src/shared/team'
-import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
 
 import { applyCooldownAck } from 'src/client/placeState'
-
-let myTeam: Team = Team.None
 
 const SYNC_LOG_INTERVAL_MS = 1000
 const SYNC_DOWN_WARN_MS    = 5000
@@ -46,7 +42,6 @@ function resolveJoinUserId(): string {
 
 export function initClientHandler(): void {
 	wireInbound()
-	wireTeamAssigned()
 	wireOutbound()
 }
 
@@ -54,29 +49,11 @@ export function initClientHandler(): void {
 // MARK: wireInbound
 
 function wireInbound(): void {
-	room.onMessage('teamAssigned', ({ team }) => {
-		eventBus.emit(ClientEvents.TeamAssigned, { team: team as Team })
-	})
-
-	room.onMessage('roundReset', ({ seed, finalRed, finalBlue, finalTotal }) => {
-		eventBus.emit(ClientEvents.RoundReset, { seed, finalRed, finalBlue, finalTotal })
-	})
-
 	room.onMessage('cooldownAck', ({ accepted, nextAllowedAt, serverNow }) => {
 		applyCooldownAck(nextAllowedAt, serverNow)
 		if (!accepted) {
 			console.log(`[Client] placePixel rejected — cooldown until ${new Date(nextAllowedAt).toISOString()}`)
 		}
-	})
-}
-
-
-// MARK: wireTeamAssigned
-
-function wireTeamAssigned(): void {
-	eventBus.on(ClientEvents.TeamAssigned, ({ team }) => {
-		myTeam = team
-		console.log(`[Client] teamAssigned → ${myTeam}`)
 	})
 }
 
