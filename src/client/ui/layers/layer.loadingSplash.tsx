@@ -83,11 +83,19 @@ let lastShownProgress = 0
 function computeProgressPct(): number {
 	const t = paintTelemetry()
 
+	// Only snap to 100% when the splash is ACTUALLY about to lift — i.e.
+	// hydration is complete AND the cold-open minimum-display time has
+	// elapsed. Otherwise (fast desktop hydrations) the bar would sit at
+	// 100% for a couple of seconds while the min-time floor keeps the
+	// splash up, which reads as "loaded but stuck".
+	const elapsed         = Date.now() - coldOpenStartedAtMs
+	const minTimeSatisfied = elapsed >= COLD_OPEN_MIN_MS
+	const hydrationDone   = t.paintHydrated && !isApplyingHydration()
+
 	let target: number
-	if (t.paintHydrated && !isApplyingHydration()) {
+	if (hydrationDone && minTimeSatisfied) {
 		target = 100
 	} else {
-		const elapsed = Date.now() - coldOpenStartedAtMs
 		const linear = Math.min(1, elapsed / BASE_DURATION_MS)
 		// Ease-out: 1 - (1 - x)^2. Fast start, gentle approach to 95%.
 		const eased = 1 - Math.pow(1 - linear, 2)
