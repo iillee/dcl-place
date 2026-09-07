@@ -55,7 +55,7 @@ const PNG_PIXELS_PER_CELL = 2
 const W_CELLS = MAZE_GRID_WIDTH  * PAINT_CELLS_PER_TILE_AXIS
 const H_CELLS = MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE_AXIS
 
-/** Unpainted-cell fill color (matches TEAM_COLORS[None] = #EAEAEA). */
+/** Unpainted-cell fill color (matches UNPAINTED_COLOR = #EAEAEA). */
 const BG_R = 0xEA, BG_G = 0xEA, BG_B = 0xEA
 
 

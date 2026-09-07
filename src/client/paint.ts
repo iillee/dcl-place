@@ -30,10 +30,8 @@ import {
 	PAINT_CELLS_PER_TILE,
 } from 'src/shared/paintGrid'
 import {
-	TEAM_COLORS,
+	UNPAINTED_COLOR,
 	PALETTE_NONE,
-	PALETTE_RED,
-	PALETTE_BLUE,
 	PLACE_PALETTE,
 } from 'src/shared/palette'
 import {
@@ -45,8 +43,6 @@ import {
 	PAINT_CELL_SIZE_METERS,
 	PAINT_CELLS_PER_TILE_AXIS,
 } from 'src/shared/settings'
-import { Team } from 'src/shared/team'
-import { eventBus, ClientEvents } from 'src/shared/utils/eventBus'
 import { playClaimSfx } from 'src/client/audio'
 
 
@@ -104,9 +100,7 @@ export function cellId(tx: number, tz: number, ty: number, col: number, row: num
 // -------- Palette (CRDT-observed) --------
 
 const paletteByIndex = new Map<number, Color4>([
-	[PALETTE_NONE, TEAM_COLORS[Team.None]],
-	[PALETTE_RED,  TEAM_COLORS[Team.Red]],
-	[PALETTE_BLUE, TEAM_COLORS[Team.Blue]],
+	[PALETTE_NONE, UNPAINTED_COLOR],
 ])
 for (let i = 0; i < PLACE_PALETTE.length; i++) {
 	paletteByIndex.set(i + 1, PLACE_PALETTE[i])
@@ -154,19 +148,10 @@ export function paintTelemetry(): {
 }
 
 
-// -------- Compat: teams (dcl/place is teamless) --------
-
-let localTeam: Team = Team.None
-export function setLocalTeam(team: Team): void { localTeam = team }
-export function getLocalTeam(): Team { return localTeam }
-
-
 // -------- initPaintNet: observe CRDT --------
 
 export function initPaintNet(): void {
-	eventBus.on(ClientEvents.TeamAssigned, ({ team }) => { localTeam = team })
 	// dcl/place has no round resets — the canvas is permanent.
-
 	engine.addSystem(() => {
 		syncPaletteFromCrdt()
 		syncCellsFromCrdt()
@@ -349,7 +334,7 @@ function cellMaterialFromColor(color: Color4) {
 		specularIntensity: 0.0,
 	}
 }
-const NONE_MAT = cellMaterialFromColor(TEAM_COLORS[Team.None])
+const NONE_MAT = cellMaterialFromColor(UNPAINTED_COLOR)
 function cellMaterialForIndex(index: number) {
 	const color = paletteByIndex.get(index)
 	if (!color) return null

@@ -34,7 +34,6 @@ import {
 } from 'src/shared/settings'
 void MAZE_GRID_HEIGHT; void PAINT_CELLS_PER_TILE_AXIS
 import { PLACE_PALETTE_SIZE } from 'src/shared/palette'
-import { Team } from 'src/shared/team'
 
 import { initDiscord, bindNameResolver, schedulePlayerJoin, flushPendingJoins } from 'src/server/discord'
 import {
@@ -48,10 +47,8 @@ import {
 	clearLeaderboardDirty,
 } from 'src/server/leaderboard'
 import {
-	applyPaint,
 	applyPaintIndex,
 	coverage,
-	seedTeamPalette,
 	seedPlacePalette,
 	isCoverageDirty,
 	publishCoverage,
@@ -87,8 +84,7 @@ export async function setupServer(): Promise<void> {
 		`PaintTile networkIds ${paintCap.tileNetBase}+`
 	)
 	initPaintSync()
-	seedTeamPalette()   // indexes 0/1/2 (compat)
-	seedPlacePalette()  // indexes 1..16 (dcl/place selectable colors)
+	seedPlacePalette()  // index 0 = unpainted grey, 1..N = PLACE_PALETTE
 	await loadCanvas()  // hydrate persisted pixels before any client connects
 
 	initServerStats()
@@ -107,10 +103,8 @@ export async function setupServer(): Promise<void> {
 	let placeRejectedBad  = 0
 	let paintSummaryClock = 0
 
-	// joinRoster is kept from canvas so the client boot handshake still works,
-	// but there are NO teams in dcl/place. We just log the join and let the
-	// client pick its own paletteIndex client-side. Any team assignment is
-	// legacy noise — we reply with Team.None (0) to keep the schema stable.
+	// joinRoster: client boot handshake. Log + schedule the Discord
+	// player-joined notification. No team assignment (dcl/place is teamless).
 	room.onMessage('joinRoster', ({ userId }, context) => {
 		const from = context?.from
 		if (!from) return
@@ -118,19 +112,7 @@ export async function setupServer(): Promise<void> {
 			console.log(`[Server] joinRoster payload/from mismatch (payload=${userId}, from=${from})`)
 		}
 		console.log(`[Server] joinRoster ${from}`)
-		room.send('teamAssigned', { team: Team.None }, { to: [from] })
 		schedulePlayerJoin(from)
-	})
-
-	// Legacy switchTeam — no-op in dcl/place, silently accept.
-	room.onMessage('switchTeam', (_data, context) => {
-		if (!context?.from) return
-	})
-
-	// Legacy paintTick — dcl/place uses placePixel instead. Ignore silently
-	// so an old client build can't scribble on the canvas.
-	room.onMessage('paintTick', () => {
-		// intentionally empty
 	})
 
 	// dcl/place: place a single pixel. Enforces PAINT_COOLDOWN_MS per sender.
@@ -320,7 +302,5 @@ export async function setupServer(): Promise<void> {
 		`grid ${MAZE_GRID_WIDTH}×${MAZE_GRID_HEIGHT} tiles × ${PAINT_CELLS_PER_TILE_AXIS}²/tile = ` +
 		`${MAZE_GRID_WIDTH * PAINT_CELLS_PER_TILE_AXIS}×${MAZE_GRID_HEIGHT * PAINT_CELLS_PER_TILE_AXIS} pixels`
 	)
-	// suppress unused-import lint for legacy helpers kept for compat
-	void applyPaint
 	void PAINT_TICK_MAX_CELLS
 }

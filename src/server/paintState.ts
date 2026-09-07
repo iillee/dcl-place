@@ -1,10 +1,9 @@
 /**
- * paintState.ts — authoritative paint map as sparse PaintCell CRDT + palette.
+ * paintState.ts — authoritative paint map as chunked PaintTile CRDT + palette.
  *
- * Clients send cell ids via paintTick. Server interns the sender's team
- * Color4 into the palette, writes a Byte index into a per-cell PaintCell
- * component (created on first paint), and publishes coverage on
- * PaintCoverage. No room-message state sync.
+ * Clients send placePixel { cellId, paletteIndex }. Server validates,
+ * writes a Byte index into the containing tile's cells buffer, and
+ * publishes coverage on PaintCoverage. No room-message state sync.
  */
 
 import { Color4 } from '@dcl/sdk/math'
@@ -16,13 +15,9 @@ import {
 import { cellIdToKey } from 'src/shared/paintGrid'
 import {
 	colorKey,
-	teamColor,
-	teamPaletteIndex,
+	UNPAINTED_COLOR,
 	PALETTE_NONE,
-	PALETTE_RED,
-	PALETTE_BLUE,
 	MAX_PALETTE_INDEX,
-	TEAM_COLORS,
 	PLACE_PALETTE,
 	PLACE_PALETTE_SIZE,
 	placeColor,
@@ -34,7 +29,6 @@ import {
 	zeroAllPaintTiles,
 	paintedCellCount as tilePaintedCellCount,
 } from 'src/shared/paintSync'
-import { Team } from 'src/shared/team'
 
 import { noteComponentChange } from 'src/server/serverStats'
 
@@ -59,34 +53,19 @@ let canvasDirty = false
 let snapshotDirty = false
 
 
-// MARK: seedTeamPalette
-
-/**
- * Seed palette indexes 0/1/2 for None/Red/Blue. Call once after initPaintSync
- * so CRDT PaletteEntry entities already exist. Indexes are deterministic.
- */
-export function seedTeamPalette(): void {
-	internColor(TEAM_COLORS[Team.None]) // → 0
-	internColor(TEAM_COLORS[Team.Red])  // → 1
-	internColor(TEAM_COLORS[Team.Blue]) // → 2
-	if (colorToIndex.get(colorKey(TEAM_COLORS[Team.None])) !== PALETTE_NONE ||
-		colorToIndex.get(colorKey(TEAM_COLORS[Team.Red]))  !== PALETTE_RED ||
-		colorToIndex.get(colorKey(TEAM_COLORS[Team.Blue])) !== PALETTE_BLUE) {
-		console.error('[PaintState] seedTeamPalette: reserved indexes mismatch')
-	}
-	publishCoverage()
-	console.log('[PaintState] palette seeded: 0=None 1=Red 2=Blue')
-}
-
-
 // MARK: seedPlacePalette
 
 /**
- * dcl/place: seed all 16 palette colors at their fixed indexes (1..16).
- * Call after seedTeamPalette so indexes 0/1/2 remain None/Red/Blue.
- * Idempotent — internColor returns existing index on exact match.
+ * Seed the palette CRDT: index 0 = unpainted grey, indexes 1..N = the
+ * PLACE_PALETTE colors. Call once after initPaintSync so PaletteEntry
+ * entities already exist. Idempotent — internColor returns the existing
+ * index on exact match.
  */
 export function seedPlacePalette(): void {
+	internColor(UNPAINTED_COLOR) // → 0
+	if (colorToIndex.get(colorKey(UNPAINTED_COLOR)) !== PALETTE_NONE) {
+		console.error('[PaintState] seedPlacePalette: PALETTE_NONE slot mismatch')
+	}
 	for (let i = 0; i < PLACE_PALETTE.length; i++) {
 		const idx = internColor(PLACE_PALETTE[i])
 		const expected = i + 1
@@ -94,7 +73,8 @@ export function seedPlacePalette(): void {
 			console.error(`[PaintState] seedPlacePalette: color ${i} interned at ${idx}, expected ${expected}`)
 		}
 	}
-	console.log(`[PaintState] place palette seeded: 16 colors at indexes 1..${PLACE_PALETTE_SIZE}`)
+	publishCoverage()
+	console.log(`[PaintState] palette seeded: index 0 = unpainted, 1..${PLACE_PALETTE_SIZE} = PLACE_PALETTE`)
 }
 
 
@@ -190,26 +170,6 @@ export function internColor(color: Color4): number {
 }
 
 
-// MARK: applyPaint
-
-/**
- * Apply a paint from a validated sender's team. Overwrites existing color.
- * Returns true only when the cell's palette index actually changed.
- */
-export function applyPaint(id: string, team: number): boolean {
-	const index = teamPaletteIndex(team as Team)
-	internColor(teamColor(team as Team))
-
-	const prev = cellIndex.get(id) ?? PALETTE_NONE
-	if (prev === index) return false
-
-	if (!writeCellIndex(id, index)) return false
-	cellIndex.set(id, index)
-	coverageDirty = true
-	return true
-}
-
-
 // MARK: writeCellIndex
 
 function writeCellIndex(id: string, index: number): boolean {
@@ -237,14 +197,10 @@ export function isCoverageDirty(): boolean {
 
 // MARK: coverage
 
-/** Live coverage counters from the authoritative cell map. */
+/** Live coverage counters. red/blue kept in the shape for CRDT schema
+ *  stability but always 0 in dcl/place (teamless canvas). */
 export function coverage(): { red: number; blue: number; total: number } {
-	let red = 0, blue = 0
-	for (const idx of cellIndex.values()) {
-		if (idx === PALETTE_RED)       red++
-		else if (idx === PALETTE_BLUE) blue++
-	}
-	return { red, blue, total: cellIndex.size }
+	return { red: 0, blue: 0, total: cellIndex.size }
 }
 
 
