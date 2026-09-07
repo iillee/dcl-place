@@ -199,6 +199,18 @@ type PendingApply = { id: string; index: number }
 const applyQueue: PendingApply[] = []
 const APPLIES_PER_FRAME = 300
 
+// Sticky-settle window: once paintHydrated flips, the splash stays up
+// until BOTH the applyQueue is empty AND no new CRDT activity (new tile
+// arrivals or new apply enqueues) has happened for HYDRATION_SETTLE_MS.
+//
+// Why: on mobile the CRDT payload arrives in bursts with multi-second
+// gaps. Without a settle grace, the splash could lift after the first
+// burst drained (all three gate conditions momentarily false) and then
+// re-open on the next burst — user sees a 1-frame flash of the world +
+// HUD before the splash returns.
+const HYDRATION_SETTLE_MS = 2000
+let lastApplyActivityAtMs = 0
+
 function drainApplyQueue(): void {
 	if (applyQueue.length === 0) return
 	const n = Math.min(APPLIES_PER_FRAME, applyQueue.length)
@@ -207,12 +219,19 @@ function drainApplyQueue(): void {
 		applyPaintIndex(a.id, a.index, false)
 	}
 	applyQueue.splice(0, n)
+	lastApplyActivityAtMs = Date.now()
 }
 
-/** True while the CRDT-driven apply queue is still draining. Used by
- *  the loading splash gate. */
+/** True while the CRDT-driven apply queue is still draining OR within
+ *  the sticky settle window after the last activity. Used by the
+ *  loading splash gate. */
 export function isApplyingHydration(): boolean {
-	return applyQueue.length > 0
+	if (applyQueue.length > 0) return true
+	// Before paintHydrated flips we don't need the settle window — the
+	// splash is already held up by !paintHydrated.
+	if (!paintHydrated) return false
+	if (lastApplyActivityAtMs === 0) return false
+	return Date.now() - lastApplyActivityAtMs < HYDRATION_SETTLE_MS
 }
 
 function syncCellsFromCrdt(): void {
@@ -244,6 +263,7 @@ function syncCellsFromCrdt(): void {
 			shadow[localIdx] = next
 			const cellKey = joinCellKey(tileKey, localIdx)
 			applyQueue.push({ id: cellKeyToCellId(cellKey), index: next })
+			lastApplyActivityAtMs = Date.now()
 			anyChange = true
 		}
 	}
@@ -289,7 +309,7 @@ function syncCellsFromCrdt(): void {
 }
 
 const EXPECTED_TILE_COUNT     = MAZE_GRID_WIDTH * MAZE_GRID_HEIGHT
-const HYDRATION_QUIESCENCE_MS = 1500
+const HYDRATION_QUIESCENCE_MS = 3000
 const HYDRATION_MAX_WAIT_MS   = 10000
 
 
