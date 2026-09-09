@@ -7,9 +7,15 @@
 //
 // Env (from .env or shell):
 //   DISCORD_BOT_TOKEN            — bot token with View Channel + Read Message History
-//   DISCORD_SNAPSHOT_CHANNEL_ID  — snapshot channel snowflake
+//   DISCORD_SNAPSHOT_CHANNEL_ID  — World-deploy snapshot channel snowflake
+//   DISCORD_GENESIS_CHANNEL_ID   — Genesis-deploy snapshot channel snowflake
 //
 // Flags:
+//   --target <world|genesis>  which deploy's archive to pull (default: world).
+//                             world   → DISCORD_SNAPSHOT_CHANNEL_ID   → ../dclplace_timelapse/
+//                             genesis → DISCORD_GENESIS_CHANNEL_ID    → ../dclplace_timelapse_genesis/
+//   --gif             also emit an animated GIF alongside the mp4
+//   --gif-only        emit only the GIF (skip mp4)
 //   --skip-download   reuse existing frames, only run ffmpeg
 //   --skip-encode     download frames, skip ffmpeg
 //   --fps <n>         output frames per second (default 24)
@@ -26,12 +32,6 @@ import { spawn } from 'node:child_process'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
-// OUT_DIR lives OUTSIDE the scene project so its ~100 MB of frames + video
-// don't bloat the deploy bundle. Repo root is `.../creator-hub/Scenes/dcl-place`;
-// timelapse sits alongside at `.../creator-hub/Scenes/dclplace_timelapse`.
-// Override with the TIMELAPSE_DIR env var if you keep it elsewhere.
-const OUT_DIR = process.env.TIMELAPSE_DIR || join(ROOT, '..', 'dclplace_timelapse')
-const FRAMES_DIR = join(OUT_DIR, 'frames')
 
 // ---- env loading (tiny .env parser, no dep) ----
 function loadDotenv() {
@@ -46,9 +46,7 @@ function loadDotenv() {
 loadDotenv()
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN
-const CHANNEL_ID = process.env.DISCORD_SNAPSHOT_CHANNEL_ID
 if (!TOKEN) die('DISCORD_BOT_TOKEN missing — set it in .env')
-if (!CHANNEL_ID) die('DISCORD_SNAPSHOT_CHANNEL_ID missing — set it in .env')
 
 // ---- args ----
 const args = process.argv.slice(2)
@@ -60,10 +58,25 @@ const afterIso = argVal('--after')
 const afterMs = afterIso ? Date.parse(afterIso) : 0
 if (afterIso && Number.isNaN(afterMs)) die(`--after: not a valid ISO date: ${afterIso}`)
 const renumber = args.includes('--renumber')
+const target = (argVal('--target') || 'world').toLowerCase()
+if (target !== 'world' && target !== 'genesis') die(`--target must be 'world' or 'genesis' (got '${target}')`)
+const wantGif = args.includes('--gif') || args.includes('--gif-only')
+const gifOnly = args.includes('--gif-only')
 function argVal(flag) {
   const i = args.indexOf(flag)
   return i >= 0 ? args[i + 1] : undefined
 }
+
+// ---- target routing ----
+// Each deploy (World vs Genesis) posts to its own Discord channel and its
+// frames live in a sibling output dir so archives stay cleanly separated.
+const CHANNEL_ID = target === 'genesis'
+  ? process.env.DISCORD_GENESIS_CHANNEL_ID
+  : process.env.DISCORD_SNAPSHOT_CHANNEL_ID
+if (!CHANNEL_ID) die(`channel id missing for target='${target}' — set ${target === 'genesis' ? 'DISCORD_GENESIS_CHANNEL_ID' : 'DISCORD_SNAPSHOT_CHANNEL_ID'} in .env`)
+const OUT_DIR = process.env.TIMELAPSE_DIR || join(ROOT, '..', target === 'genesis' ? 'dclplace_timelapse_genesis' : 'dclplace_timelapse')
+const FRAMES_DIR = join(OUT_DIR, 'frames')
+log(`target=${target} channel=${CHANNEL_ID} outDir=${OUT_DIR}`)
 
 // ---- main ----
 mkdirSync(FRAMES_DIR, { recursive: true })
@@ -169,19 +182,45 @@ async function downloadFile(url, dest) {
 async function encodeVideo() {
   const frames = countFrames()
   if (frames === 0) die('no frames to encode')
-  const out = join(OUT_DIR, 'timelapse.mp4')
-  log(`encoding ${frames} frames @ ${fps}fps → ${out}`)
-  const args = [
-    '-y',
-    '-framerate', String(fps),
-    '-i', join(FRAMES_DIR, '%06d.png'),
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-    out,
-  ]
-  await run('ffmpeg', args)
-  log(`✅ done: ${out}`)
+  const input = join(FRAMES_DIR, '%06d.png')
+
+  if (!gifOnly) {
+    const out = join(OUT_DIR, 'timelapse.mp4')
+    log(`encoding ${frames} frames @ ${fps}fps → ${out}`)
+    await run('ffmpeg', [
+      '-y',
+      '-framerate', String(fps),
+      '-i', input,
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+      out,
+    ])
+    log(`✅ mp4: ${out}`)
+  }
+
+  if (wantGif) {
+    // Two-pass GIF via palettegen/paletteuse for decent quality.
+    const palette = join(OUT_DIR, 'palette.png')
+    const gif = join(OUT_DIR, 'timelapse.gif')
+    log(`encoding GIF (2-pass palette) @ ${fps}fps → ${gif}`)
+    await run('ffmpeg', [
+      '-y',
+      '-framerate', String(fps),
+      '-i', input,
+      '-vf', 'palettegen=stats_mode=diff',
+      palette,
+    ])
+    await run('ffmpeg', [
+      '-y',
+      '-framerate', String(fps),
+      '-i', input,
+      '-i', palette,
+      '-lavfi', 'paletteuse=dither=bayer:bayer_scale=5',
+      gif,
+    ])
+    log(`✅ gif: ${gif}`)
+  }
 }
 
 function countFrames() {

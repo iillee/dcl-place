@@ -7,6 +7,11 @@
     "build": "sdk-commands build",
     "build:prod": "sdk-commands build --production",
     "deploy": "npm run build:prod && sdk-commands deploy --skip-build",
+    "scene:status": "node scripts/swap-scene.mjs status",
+    "scene:world": "node scripts/swap-scene.mjs world",
+    "scene:genesis": "node scripts/swap-scene.mjs genesis",
+    "deploy:world": "node scripts/swap-scene.mjs world && npm run build:prod && sdk-commands deploy --skip-build",
+    "deploy:genesis": "node scripts/swap-scene.mjs genesis && npm run build:prod && sdk-commands deploy --skip-build -t linker-server.decentraland.org --skip-validations true",
     "server-logs": "sdk-commands sdk-server-logs",
     "upgrade-sdk": "npm install --save-dev @dcl/sdk@auth-server",
     "upgrade-sdk:next": "npm install --save-dev @dcl/sdk@next"

@@ -2,6 +2,12 @@ package-lock.json
 *.js
 node_modules
 bin/
+
+# swap-scene.mjs backup of scene.json before variant swap
+scene.json.bak
+
+# Local webhook fallback (Genesis deploy workaround — see webhookSecrets.example.ts)
+src/server/webhookSecrets.ts
 .DS_Store
 **/.DS_Store
 npm-debug.log*
